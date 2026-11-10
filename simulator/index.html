@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CubePaw OS · 微雪 ESP32-S3 1.54寸 小玉掌上系统真机模拟器</title>
+<style>
+  :root {
+    --INK: #262D5C;
+    --CREAM: #FFF6B3;
+    --GOLD: #FFEA79;
+    --CORAL: #FF8A80;
+    --SKY: #80D8FF;
+    --MINT: #B9F6CA;
+  }
+  * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: radial-gradient(circle at 50% 25%, #2b3252 0%, #141829 100%);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: #f0f4f8;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .header-bar {
+    text-align: center;
+    margin-bottom: 18px;
+  }
+  .header-bar h1 {
+    margin: 0 0 6px 0;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: #fff6b3;
+  }
+  .header-bar p {
+    margin: 0;
+    font-size: 13px;
+    color: #aab4cf;
+  }
+  .stage {
+    display: flex;
+    gap: 32px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  /* 微雪 1.54寸 白色魔方外壳 1:1 放大 1.5x (屏幕 360x360 渲染 240x240 逻辑像素) */
+  .cube-shell {
+    position: relative;
+    width: 440px;
+    height: 450px;
+    background: linear-gradient(145deg, #ffffff 0%, #eceff4 65%, #cfd6e2 100%);
+    border-radius: 56px;
+    box-shadow:
+      0 28px 60px rgba(0,0,0,0.55),
+      inset 0 3px 6px rgba(255,255,255,0.9),
+      inset 0 -8px 16px rgba(160,172,190,0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s ease;
+  }
+  /* 机身顶部 3 个物理按键 */
+  .top-buttons {
+    position: absolute;
+    top: -10px;
+    display: flex;
+    gap: 28px;
+  }
+  .hw-btn {
+    width: 48px;
+    height: 12px;
+    background: linear-gradient(90deg, #d0d7e2, #f5f7fa, #b8c2d1);
+    border-radius: 6px 6px 0 0;
+    border: 1px solid #9aa5b8;
+    border-bottom: none;
+    cursor: pointer;
+    position: relative;
+  }
+  .hw-btn:active { transform: translateY(3px); }
+  .hw-btn span {
+    position: absolute;
+    top: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: #cbd5e1;
+    white-space: nowrap;
+  }
+  /* 黑色玻璃屏幕面板 */
+  .bezel {
+    width: 392px;
+    height: 392px;
+    background: #111318;
+    border-radius: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: inset 0 0 12px rgba(0,0,0,0.9);
+    position: relative;
+  }
+  /* 240x240 屏幕（1.4x 高清缩放为 336x336） */
+  .lcd-viewport {
+    width: 240px;
+    height: 240px;
+    transform: scale(1.4);
+    transform-origin: center center;
+    background: var(--CREAM);
+    border-radius: 6px;
+    overflow: hidden;
+    position: relative;
+    color: var(--INK);
+    cursor: pointer;
+  }
+  .brightness-overlay {
+    position: absolute;
+    inset: 0;
+    background: #000;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 999;
+    transition: opacity 0.15s;
+  }
+  /* 底部 Type-C 接口装饰 */
+  .typec-port {
+    position: absolute;
+    bottom: 10px;
+    width: 46px;
+    height: 10px;
+    background: #2a2e37;
+    border-radius: 5px;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.8);
+  }
+  /* 应用通用视图 */
+  .app-screen {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+  }
+  .app-screen.active { display: flex; }
+
+  .status-bar {
+    height: 22px;
+    padding: 0 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--INK);
+  }
+  .top-nav {
+    height: 28px;
+    padding: 0 6px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(255,255,255,0.45);
+    border-bottom: 1.5px solid rgba(38,45,92,0.15);
+  }
+  .nav-back-btn {
+    background: var(--INK);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .nav-title {
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--INK);
+  }
+
+  /* 1. 表盘页 Watchface */
+  .wf-clock {
+    text-align: center;
+    font-size: 28px;
+    font-weight: 900;
+    letter-spacing: 1px;
+    line-height: 1;
+    margin-top: 2px;
+    color: var(--INK);
+  }
+  .wf-date {
+    text-align: center;
+    font-size: 10px;
+    font-weight: 700;
+    color: #525A8E;
+    margin: 3px 0 4px 0;
+  }
+  .wf-avatar-box {
+    width: 122px;
+    height: 122px;
+    margin: 0 auto;
+    border-radius: 18px;
+    border: 2.5px solid var(--INK);
+    background: var(--GOLD);
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 3px 0 var(--INK);
+    cursor: pointer;
+  }
+  .wf-avatar-box img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .wf-badge {
+    position: absolute;
+    bottom: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(38,45,92,0.88);
+    color: #fff;
+    font-size: 9px;
+    padding: 1px 7px;
+    border-radius: 8px;
+    white-space: nowrap;
+  }
+  .wf-bottom-btn {
+    margin: auto auto 6px auto;
+    background: var(--INK);
+    color: #fff6b3;
+    border: none;
+    border-radius: 12px;
+    padding: 4px 12px;
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  /* 2. 6宫格桌面 Launcher */
+  .launcher-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    padding: 10px 10px 4px 10px;
+    flex: 1;
+  }
+  .app-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    cursor: pointer;
+    border-radius: 14px;
+    transition: transform 0.12s ease;
+  }
+  .app-tile:active { transform: scale(0.92); }
+  .app-tile .icon-img { width: 48px; height: 48px; flex: none; display: block; }
+  .app-tile .lbl { font-size: 11px; line-height: 1.3; font-weight: 700; color: var(--INK); }
+
+  /* 3. 小玉 AI 语音助手 */
+  .ai-stage {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 4px 8px;
+  }
+  .ai-portrait {
+    width: 112px;
+    height: 112px;
+    border-radius: 16px;
+    border: 2.5px solid var(--INK);
+    overflow: hidden;
+    background: var(--GOLD);
+    position: relative;
+  }
+  .ai-portrait img { width: 100%; height: 100%; object-fit: cover; }
+  .ai-subtitle {
+    margin-top: 5px;
+    background: #fff;
+    border: 1.5px solid var(--INK);
+    border-radius: 10px;
+    padding: 4px 8px;
+    font-size: 10px;
+    font-weight: 700;
+    width: 220px;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    line-height: 1.3;
+  }
+  .ai-actions {
+    margin-top: auto;
+    margin-bottom: 5px;
+    display: flex;
+    gap: 6px;
+  }
+  .pill-btn {
+    border: 1.5px solid var(--INK);
+    background: var(--CORAL);
+    color: var(--INK);
+    font-weight: 800;
+    font-size: 10px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    cursor: pointer;
+  }
+
+  /* 4. 音乐盒 */
+  .vinyl-disc {
+    width: 84px;
+    height: 84px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #ffea79 0 16%, #262d5c 17% 100%);
+    border: 4px solid #ff8a80;
+    margin: 6px auto 4px auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .vinyl-disc.spinning {
+    animation: spin 4s linear infinite;
+  }
+  .vinyl-disc img {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+  }
+  @keyframes spin { 100% { transform: rotate(360deg); } }
+
+  /* 右侧控制面板 */
+  .side-panel {
+    width: 340px;
+    background: rgba(255,255,255,0.07);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 20px;
+    padding: 18px;
+  }
+  .side-panel h3 {
+    margin: 0 0 10px 0;
+    font-size: 15px;
+    color: #fff6b3;
+  }
+  .quick-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .q-btn {
+    background: rgba(255,255,255,0.12);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 10px;
+    padding: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+  }
+  .q-btn:hover { background: rgba(255,246,179,0.22); border-color: #fff6b3; }
+  .imu-box {
+    background: rgba(0,0,0,0.25);
+    border-radius: 12px;
+    padding: 10px;
+    font-size: 12px;
+  }
+  .imu-box label { display: flex; justify-content: space-between; margin: 4px 0; }
+  .imu-box input[type=range] { width: 140px; }
+</style>
+</head>
+<body>
+
+<div class="header-bar">
+  <h1>🐾 CubePaw OS · 小玉掌上多合一系统 (1:1 真机交互模拟器)</h1>
+  <p>微雪 ESP32-S3-Touch-LCD-1.54 (240×240 电容触摸屏 + 六轴陀螺仪 + TF卡扩展 + 防回声自激补丁)</p>
+</div>
+
+<div class="stage">
+  <!-- 白色微雪魔方真机外壳 -->
+  <div class="cube-shell" id="cubeShell">
+    <div class="top-buttons">
+      <div class="hw-btn" onclick="adjustVolume(-10)" title="音量-"><span>音量 -</span></div>
+      <div class="hw-btn" onclick="openApp('WATCHFACE')" title="BOOT键: 回表盘/打断"><span>BOOT 主键</span></div>
+      <div class="hw-btn" onclick="adjustVolume(10)" title="音量+"><span>音量 +</span></div>
+    </div>
+
+    <div class="bezel">
+      <div class="lcd-viewport" id="lcd">
+        <div class="brightness-overlay" id="briMask"></div>
+
+        <!-- 1. WATCHFACE 小玉互动时钟表盘 -->
+        <div class="app-screen active" id="scr-WATCHFACE">
+          <div class="status-bar">
+            <span id="wfWifi">📶 Home-2.4G</span>
+            <span id="wfBatt">🔋 96%</span>
+          </div>
+          <div class="wf-clock" id="wfClock">12:00:00</div>
+          <div class="wf-date" id="wfDate">11月09日 星期一</div>
+          <div class="wf-avatar-box" onclick="openApp('AI_CHAT')" title="点击小玉开启语音聊天">
+            <img id="wfAvatarImg" src="../assets/xiaoyu_emojis/02_标准英文名_21张/neutral.png" alt="小玉">
+            <div class="wf-badge">🎙️ 点小玉对话</div>
+          </div>
+          <button class="wf-bottom-btn" onclick="openApp('LAUNCHER')">⬅️ 左滑 / 点此进入 6宫格桌面</button>
+        </div>
+
+        <!-- 2. LAUNCHER 6宫格应用桌面 -->
+        <div class="app-screen" id="scr-LAUNCHER">
+          <div class="status-bar">
+            <span>📱 小玉应用桌面</span>
+            <span onclick="openApp('WATCHFACE')" style="cursor:pointer;">表盘 &gt;</span>
+          </div>
+          <div class="launcher-grid">
+            <div class="app-tile" onclick="openApp('AI_CHAT')">
+              <img class="icon-img" src="../assets/ui_icons/icon_ai_chat.png" alt=""><div class="lbl">AI对话</div>
+            </div>
+            <div class="app-tile" onclick="openApp('MUSIC')">
+              <img class="icon-img" src="../assets/ui_icons/icon_music.png" alt=""><div class="lbl">音乐盒</div>
+            </div>
+            <div class="app-tile" onclick="openApp('GALLERY')">
+              <img class="icon-img" src="../assets/ui_icons/icon_gallery.png" alt=""><div class="lbl">小玉相册</div>
+            </div>
+            <div class="app-tile" onclick="openApp('GAMES')">
+              <img class="icon-img" src="../assets/ui_icons/icon_games.png" alt=""><div class="lbl">游戏厅</div>
+            </div>
+            <div class="app-tile" onclick="openApp('WATCHFACE')">
+              <img class="icon-img" src="../assets/ui_icons/icon_clock.png" alt=""><div class="lbl">时钟</div>
+            </div>
+            <div class="app-tile" onclick="openApp('SETTINGS')">
+              <img class="icon-img" src="../assets/ui_icons/icon_settings.png" alt=""><div class="lbl">设置</div>
+            </div>
+          </div>
+          <div style="text-align:center;font-size:9px;padding-bottom:4px;font-weight:700;color:#525A8E;">
+            点击图标进入 · 右滑返回时钟表盘
+          </div>
+        </div>
+
+        <!-- 3. AI_CHAT 小玉语音助手 -->
+        <div class="app-screen" id="scr-AI_CHAT">
+          <div class="top-nav">
+            <button class="nav-back-btn" onclick="openApp('LAUNCHER')">&lt; 桌面</button>
+            <span class="nav-title">小玉 AI 伙伴</span>
+            <span id="micGuardTag" style="font-size:9px;background:#b9f6ca;padding:1px 5px;border-radius:6px;font-weight:800;">防回声开</span>
+          </div>
+          <div class="ai-stage">
+            <div class="ai-portrait" onclick="cycleAiEmotion()">
+              <img id="aiImg" src="../assets/xiaoyu_emojis/02_标准英文名_21张/happy.png" alt="小玉表情">
+            </div>
+            <div class="ai-subtitle" id="aiSubtitle">
+              “嗨！我是住在小魔方里的小玉，点下方按钮跟我聊天或换表情吧～”
+            </div>
+            <div class="ai-actions">
+              <button class="pill-btn" onclick="triggerKidsQA('story')">📖 讲故事</button>
+              <button class="pill-btn" style="background:#80D8FF" onclick="triggerKidsQA('why')">❓ 十万个为什么</button>
+              <button class="pill-btn" style="background:#FFD180" onclick="cycleAiEmotion()">😊 换表情</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. MUSIC 音乐播放器 -->
+        <div class="app-screen" id="scr-MUSIC" style="background:#E1F5FE;">
+          <div class="top-nav">
+            <button class="nav-back-btn" onclick="stopMusic();openApp('LAUNCHER')">&lt; 桌面</button>
+            <span class="nav-title">小玉八音盒</span>
+            <span id="musicSrcTag" onclick="toggleSdSource()" style="font-size:9px;background:#ffe082;padding:1px 5px;border-radius:6px;font-weight:800;cursor:pointer;">TF卡</span>
+          </div>
+          <div class="vinyl-disc" id="vinylDisc">
+            <img src="../assets/xiaoyu_emojis/02_标准英文名_21张/relaxed.png" alt="disc">
+          </div>
+          <div id="trackTitle" style="text-align:center;font-size:11px;font-weight:800;padding:0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            01. 一闪一闪亮晶晶
+          </div>
+          <div style="width:190px;height:6px;background:#b3e5fc;border-radius:3px;margin:6px auto;overflow:hidden;border:1px solid var(--INK);">
+            <div id="musicBar" style="width:0%;height:100%;background:#ff8a80;"></div>
+          </div>
+          <div id="musicTime" style="text-align:center;font-size:9px;font-weight:700;color:#525A8E;">00:00 / 00:32</div>
+          <div style="display:flex;justify-content:center;gap:10px;margin-top:auto;margin-bottom:8px;">
+            <button class="pill-btn" style="background:#80D8FF" onclick="changeTrack(-1)">⏮ 上一首</button>
+            <button class="pill-btn" id="playBtn" onclick="togglePlayMusic()">▶️ 播放</button>
+            <button class="pill-btn" style="background:#80D8FF" onclick="changeTrack(1)">⏭ 下一首</button>
+          </div>
+        </div>
+
+        <!-- 5. GALLERY 小玉相册 -->
+        <div class="app-screen" id="scr-GALLERY" style="background:#FFF8E1;">
+          <div class="top-nav">
+            <button class="nav-back-btn" onclick="stopSlideshow();openApp('LAUNCHER')">&lt; 桌面</button>
+            <span class="nav-title" id="galCounter">小玉相册 (1/21)</span>
+            <button class="nav-back-btn" id="slideBtn" style="background:#FFB74D;color:var(--INK)" onclick="toggleSlideshow()">轮播:关</button>
+          </div>
+          <div style="width:142px;height:142px;margin:6px auto 4px auto;border:2.5px solid var(--INK);border-radius:16px;overflow:hidden;background:var(--GOLD);">
+            <img id="galImg" src="../assets/xiaoyu_emojis/02_标准英文名_21张/neutral.png" style="width:100%;height:100%;object-fit:cover;">
+          </div>
+          <div id="galCaption" style="text-align:center;font-size:10px;font-weight:800;">01. 默认 (neutral)</div>
+          <div style="display:flex;justify-content:center;gap:16px;margin-top:auto;margin-bottom:6px;">
+            <button class="pill-btn" style="background:#262D5C;color:#fff" onclick="stepGallery(-1)">◀ 上一张</button>
+            <button class="pill-btn" style="background:#262D5C;color:#fff" onclick="stepGallery(1)">下一张 ▶</button>
+          </div>
+        </div>
+
+        <!-- 6. GAMES 4合1掌上游戏厅 -->
+        <div class="app-screen" id="scr-GAMES">
+          <div class="top-nav">
+            <button class="nav-back-btn" onclick="exitSubGame()">&lt; 返回</button>
+            <span class="nav-title" id="gameHeaderTitle">4合1 游戏厅</span>
+            <span id="gameScoreBadge" style="font-size:10px;font-weight:800;"></span>
+          </div>
+          <!-- 游戏选择菜单 -->
+          <div id="gameMenu" style="padding:8px 12px;display:flex;flex-direction:column;gap:7px;">
+            <button class="pill-btn" style="background:#FFCC80;padding:8px;text-align:left;" onclick="startGame(1)">⭐ 1. 小玉接星星 (触屏左右滑)</button>
+            <button class="pill-btn" style="background:#80DEEA;padding:8px;text-align:left;" onclick="startGame(2)">🔢 2. 2048 益智数字合成</button>
+            <button class="pill-btn" style="background:#F48FB1;padding:8px;text-align:left;" onclick="startGame(3)">🧱 3. 经典彩色打砖块</button>
+            <button class="pill-btn" style="background:#A5D6A7;padding:8px;text-align:left;" onclick="startGame(4)">🎲 4. 陀螺仪滚球迷宫 & 摇骰子</button>
+          </div>
+          <!-- 游戏画布 -->
+          <canvas id="gameCanvas" width="240" height="212" style="display:none;background:#FFF6B3;"></canvas>
+        </div>
+
+        <!-- 7. SETTINGS 网络与系统设置 -->
+        <div class="app-screen" id="scr-SETTINGS" style="background:#ECEFF1;">
+          <div class="top-nav">
+            <button class="nav-back-btn" onclick="openApp('LAUNCHER')">&lt; 桌面</button>
+            <span class="nav-title">网络与系统设置</span>
+            <span></span>
+          </div>
+          <div style="padding:8px 10px;font-size:10px;font-weight:700;display:flex;flex-direction:column;gap:8px;">
+            <div style="background:#fff;padding:6px 8px;border-radius:10px;border:1.5px solid var(--INK);display:flex;justify-content:space-between;align-items:center;">
+              <div>
+                <div>📶 Wi-Fi: <span id="setSsid">Home-WiFi-2.4G</span></div>
+                <div style="color:#607d8b;font-size:9px;">IP: 192.168.1.108 (已激活)</div>
+              </div>
+              <button class="nav-back-btn" style="background:#FF8A80;color:var(--INK)" onclick="simulateReconfigWifi()">重配网</button>
+            </div>
+
+            <div style="background:#fff;padding:6px 8px;border-radius:10px;border:1.5px solid var(--INK);">
+              <div style="display:flex;justify-content:space-between;">
+                <span>🔊 喇叭音量 (推荐65%防回声)</span><span id="volValLbl">65%</span>
+              </div>
+              <input type="range" id="volRange" min="0" max="100" value="65" style="width:100%;margin-top:2px;" oninput="onVolChange(this.value)">
+            </div>
+
+            <div style="background:#fff;padding:6px 8px;border-radius:10px;border:1.5px solid var(--INK);">
+              <div style="display:flex;justify-content:space-between;">
+                <span>☀️ 屏幕背光亮度</span><span id="briValLbl">90%</span>
+              </div>
+              <input type="range" id="briRange" min="20" max="100" value="90" style="width:100%;margin-top:2px;" oninput="onBriChange(this.value)">
+            </div>
+
+            <div style="background:#fff;padding:6px 8px;border-radius:10px;border:1.5px solid var(--INK);display:flex;justify-content:space-between;align-items:center;">
+              <span>🛡️ 说话时自动闭麦防乱接话</span>
+              <input type="checkbox" id="echoChk" checked onchange="toggleEchoGuard(this.checked)">
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="typec-port" title="Type-C 供电与烧录口"></div>
+  </div>
+
+  <!-- 右侧硬件调试与快捷体验面板 -->
+  <div class="side-panel">
+    <h3>⚡ 快速切换功能预览</h3>
+    <div class="quick-grid">
+      <button class="q-btn" onclick="openApp('WATCHFACE')">🕒 1. 小玉时钟表盘</button>
+      <button class="q-btn" onclick="openApp('LAUNCHER')">📱 2. 6宫格主桌面</button>
+      <button class="q-btn" onclick="openApp('AI_CHAT')">🤖 3. 小玉AI语音助手</button>
+      <button class="q-btn" onclick="openApp('MUSIC')">🎵 4. 八音盒播放器</button>
+      <button class="q-btn" onclick="openApp('GALLERY')">🖼️ 5. 小玉21图相册</button>
+      <button class="q-btn" onclick="openApp('GAMES')">🎮 6. 4合1掌上游戏厅</button>
+    </div>
+
+    <h3>🧭 QMI8658 六轴陀螺仪体感模拟</h3>
+    <div class="imu-box">
+      <label>
+        <span>左右倾斜 (X轴): <b id="imuXVal">0.0g</b></span>
+        <input type="range" id="imuX" min="-10" max="10" value="0" oninput="updateImuTilt()">
+      </label>
+      <label>
+        <span>前后倾斜 (Y轴): <b id="imuYVal">0.0g</b></span>
+        <input type="range" id="imuY" min="-10" max="10" value="0" oninput="updateImuTilt()">
+      </label>
+      <button class="q-btn" style="width:100%;margin-top:8px;text-align:center;background:#ff8a80;color:#141829;font-weight:800;" onclick="shakeCube()">
+        👋 摇一摇小方块 (触发陀螺仪掷骰子/换表情)
+      </button>
+    </div>
+
+    <div style="margin-top:14px;font-size:12px;color:#cbd5e1;line-height:1.5;">
+      💡 <b>操作提示：</b><br>
+      • 直接在左侧 240×240 屏幕上点击或滑动；<br>
+      • 在「音乐盒」点击播放可听到真实的八音盒儿歌旋律；<br>
+      • 在「小玉相册」可浏览全部 21 张定制小玉手绘表情。
+    </div>
+  </div>
+</div>
+
+<script>
+const EMOJI_LIST = [
+  {key:'neutral', name:'默认待机'},
+  {key:'happy', name:'开心微笑'},
+  {key:'laughing', name:'开怀大笑'},
+  {key:'funny', name:'搞怪逗趣'},
+  {key:'sad', name:'伤心撇嘴'},
+  {key:'angry', name:'生气鼓腮'},
+  {key:'crying', name:'委屈哭泣'},
+  {key:'loving', name:'满眼爱心'},
+  {key:'embarrassed', name:'害羞流汗'},
+  {key:'surprised', name:'惊讶张嘴'},
+  {key:'shocked', name:'震惊闪电'},
+  {key:'thinking', name:'认真思考'},
+  {key:'winking', name:'俏皮眨眼'},
+  {key:'cool', name:'酷炫墨镜'},
+  {key:'relaxed', name:'惬意听歌'},
+  {key:'delicious', name:'美味舔舌'},
+  {key:'kissy', name:'甜美飞吻'},
+  {key:'confident', name:'自信满满'},
+  {key:'sleepy', name:'困倦打盹'},
+  {key:'silly', name:'吐舌调皮'},
+  {key:'confused', name:'疑惑不解'}
+];
+
+function emojiUrl(key) {
+  return `../assets/xiaoyu_emojis/02_标准英文名_21张/${key}.png`;
+}
+
+// 路由切换
+let currentApp = 'WATCHFACE';
+function openApp(appId) {
+  document.querySelectorAll('.app-screen').forEach(el => el.classList.remove('active'));
+  const target = document.getElementById('scr-' + appId);
+  if (target) target.classList.add('active');
+  currentApp = appId;
+}
+
+// 1. 表盘实时时钟 + 小玉自然眨眼
+const WEEKDAYS = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+let wfBlinkIdx = 0;
+setInterval(() => {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2,'0');
+  const mm = String(now.getMinutes()).padStart(2,'0');
+  const ss = String(now.getSeconds()).padStart(2,'0');
+  document.getElementById('wfClock').textContent = `${hh}:${mm}:${ss}`;
+  document.getElementById('wfDate').textContent =
+    `${String(now.getMonth()+1).padStart(2,'0')}月${String(now.getDate()).padStart(2,'0')}日 ${WEEKDAYS[now.getDay()]}`;
+
+  // 每 3 秒小玉眨眼/微笑切换
+  wfBlinkIdx = (wfBlinkIdx + 1) % 4;
+  const wfKey = wfBlinkIdx === 0 ? 'winking' : (wfBlinkIdx === 2 ? 'happy' : 'neutral');
+  document.getElementById('wfAvatarImg').src = emojiUrl(wfKey);
+}, 1000);
+
+// 2. 小玉 AI 对话模拟
+let aiEmoIdx = 1;
+function cycleAiEmotion() {
+  aiEmoIdx = (aiEmoIdx + 1) % EMOJI_LIST.length;
+  const item = EMOJI_LIST[aiEmoIdx];
+  document.getElementById('aiImg').src = emojiUrl(item.key);
+  document.getElementById('aiSubtitle').textContent = `小玉切换到了【${item.name} (${item.key})】表情～`;
+}
+
+function triggerKidsQA(type) {
+  const img = document.getElementById('aiImg');
+  const sub = document.getElementById('aiSubtitle');
+  img.src = emojiUrl('thinking');
+  sub.textContent = '小玉正在转动小脑袋思考中...';
+  setTimeout(() => {
+    if (type === 'story') {
+      img.src = emojiUrl('loving');
+      sub.textContent = '“从前有一只戴着白耳机的小精灵叫小玉，每天陪宝贝一起探索星空…”';
+    } else {
+      img.src = emojiUrl('confident');
+      sub.textContent = '“星星一闪一闪，是因为地球大气层像晃动的水波一样折射星光哦！”';
+    }
+  }, 700);
+}
+
+// 3. WebAudio 真实八音盒音乐合成器
+let audioCtx = null;
+let musicPlaying = false;
+let musicTimer = null;
+let trackIdx = 0;
+let noteCursor = 0;
+let musicElapsed = 0;
+let systemVolume = 0.65;
+let useSdCard = true;
+
+const TRACKS = [
+  { title: '01. 一闪一闪亮晶晶 (儿歌八音盒)', notes: [262,262,392,392,440,440,392,0, 349,349,330,330,294,294,262,0] },
+  { title: '02. 欢乐颂·小玉交响曲', notes: [330,330,349,392,392,349,330,294, 262,262,294,330,330,294,294,0] },
+  { title: '03. 睡前摇篮曲·星空伴眠', notes: [330,392,330,262,294,349,294,0, 330,392,440,392,349,294,262,0] },
+  { title: '04. 两只老虎快乐跑', notes: [262,294,330,262, 262,294,330,262, 330,349,392,0, 330,349,392,0] }
+];
+
+function playPluck(freq) {
+  if (!freq || systemVolume <= 0.01) return;
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'triangle';
+  osc.frequency.value = freq * 2; // 清脆八音盒高八度
+  gain.gain.setValueAtTime(systemVolume * 0.25, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.32);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.34);
+}
+
+function togglePlayMusic() {
+  musicPlaying = !musicPlaying;
+  document.getElementById('playBtn').textContent = musicPlaying ? '⏸ 暂停' : '▶️ 播放';
+  document.getElementById('vinylDisc').classList.toggle('spinning', musicPlaying);
+  if (musicPlaying) {
+    if (!musicTimer) {
+      musicTimer = setInterval(() => {
+        const t = TRACKS[trackIdx];
+        playPluck(t.notes[noteCursor % t.notes.length]);
+        noteCursor++;
+        musicElapsed = (noteCursor % 32);
+        document.getElementById('musicBar').style.width = ((musicElapsed / 32) * 100) + '%';
+        document.getElementById('musicTime').textContent =
+          `00:${String(musicElapsed).padStart(2,'0')} / 00:32`;
+      }, 360);
+    }
+  } else {
+    stopMusic();
+  }
+}
+
+function stopMusic() {
+  musicPlaying = false;
+  if (musicTimer) { clearInterval(musicTimer); musicTimer = null; }
+  document.getElementById('playBtn').textContent = '▶️ 播放';
+  document.getElementById('vinylDisc').classList.remove('spinning');
+}
+
+function changeTrack(delta) {
+  trackIdx = (trackIdx + delta + TRACKS.length) % TRACKS.length;
+  noteCursor = 0;
+  musicElapsed = 0;
+  document.getElementById('trackTitle').textContent = TRACKS[trackIdx].title;
+  document.getElementById('musicBar').style.width = '0%';
+}
+
+function toggleSdSource() {
+  useSdCard = !useSdCard;
+  document.getElementById('musicSrcTag').textContent = useSdCard ? 'TF卡' : '内置闪存';
+}
+
+// 4. 小玉相册 Gallery
+let galIdx = 0;
+let slideTimer = null;
+function renderGallery() {
+  const item = EMOJI_LIST[galIdx];
+  document.getElementById('galImg').src = emojiUrl(item.key);
+  document.getElementById('galCounter').textContent = `小玉相册 (${galIdx+1}/21)`;
+  document.getElementById('galCaption').textContent =
+    `${String(galIdx+1).padStart(2,'0')}. ${item.name} (${item.key})`;
+}
+function stepGallery(d) {
+  galIdx = (galIdx + d + EMOJI_LIST.length) % EMOJI_LIST.length;
+  renderGallery();
+}
+function toggleSlideshow() {
+  if (slideTimer) {
+    stopSlideshow();
+  } else {
+    document.getElementById('slideBtn').textContent = '轮播:开';
+    slideTimer = setInterval(() => stepGallery(1), 1800);
+  }
+}
+function stopSlideshow() {
+  if (slideTimer) { clearInterval(slideTimer); slideTimer = null; }
+  document.getElementById('slideBtn').textContent = '轮播:关';
+}
+
+// 5. 4合1 掌上游戏厅
+let activeGame = 0;
+let gameLoop = null;
+const cvs = document.getElementById('gameCanvas');
+const ctx = cvs.getContext('2d');
+const xiaoyuSprite = new Image();
+xiaoyuSprite.src = emojiUrl('happy');
+
+let gState = {};
+
+function exitSubGame() {
+  if (gameLoop) { clearInterval(gameLoop); gameLoop = null; }
+  if (activeGame === 0) {
+    openApp('LAUNCHER');
+  } else {
+    activeGame = 0;
+    cvs.style.display = 'none';
+    document.getElementById('gameMenu').style.display = 'flex';
+    document.getElementById('gameHeaderTitle').textContent = '4合1 游戏厅';
+    document.getElementById('gameScoreBadge').textContent = '';
+  }
+}
+
+function startGame(id) {
+  activeGame = id;
+  document.getElementById('gameMenu').style.display = 'none';
+  cvs.style.display = 'block';
+  if (gameLoop) clearInterval(gameLoop);
+
+  if (id === 1) {
+    // 1. 小玉接星星
+    document.getElementById('gameHeaderTitle').textContent = '小玉接星星';
+    gState = { px: 96, sx: 120, sy: 10, score: 0, bomb: false };
+    gameLoop = setInterval(() => {
+      gState.sy += 4.5;
+      if (gState.sy >= 162 && gState.sy <= 198 && Math.abs(gState.sx - (gState.px + 22)) < 28) {
+        gState.score = gState.bomb ? Math.max(0, gState.score - 15) : gState.score + 10;
+        playPluck(gState.bomb ? 150 : 523);
+        gState.sy = 10;
+        gState.sx = 20 + Math.random() * 200;
+        gState.bomb = Math.random() < 0.22;
+      }
+      if (gState.sy > 210) {
+        gState.sy = 10;
+        gState.sx = 20 + Math.random() * 200;
+        gState.bomb = Math.random() < 0.22;
+      }
+      document.getElementById('gameScoreBadge').textContent = `★ ${gState.score}`;
+      ctx.fillStyle = '#FFF6B3';
+      ctx.fillRect(0, 0, 240, 212);
+      // 绘制掉落星星或小炸弹
+      ctx.font = '20px sans-serif';
+      ctx.fillText(gState.bomb ? '💣' : '⭐', gState.sx - 10, gState.sy);
+      // 绘制小玉头像接篮
+      ctx.drawImage(xiaoyuSprite, gState.px, 162, 44, 44);
+      ctx.strokeStyle = '#262D5C';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(gState.px, 162, 44, 44);
+    }, 30);
+  } else if (id === 2) {
+    // 2. 2048 益智块 (点击四向区域或键盘方向键移动)
+    document.getElementById('gameHeaderTitle').textContent = '2048 (点四边滑动)';
+    gState = { grid: [[2,0,0,0],[0,2,0,0],[0,0,0,0],[0,0,0,0]], score: 0 };
+    draw2048();
+  } else if (id === 3) {
+    // 3. 经典打砖块
+    document.getElementById('gameHeaderTitle').textContent = '彩色打砖块';
+    const bricks = [];
+    for (let r=0; r<3; r++) for (let c=0; c<6; c++) bricks.push({x: 12+c*36, y: 14+r*20, alive:true, color: ['#FF8A80','#FFD180','#80D8FF'][r]});
+    gState = { px: 90, bx: 120, by: 140, vx: 2.6, vy: -3.0, bricks, score: 0 };
+    gameLoop = setInterval(() => {
+      gState.bx += gState.vx;
+      gState.by += gState.vy;
+      if (gState.bx < 8 || gState.bx > 232) gState.vx = -gState.vx;
+      if (gState.by < 8) gState.vy = -gState.vy;
+      if (gState.by >= 184 && gState.by <= 196 && gState.bx >= gState.px - 4 && gState.bx <= gState.px + 60) {
+        gState.vy = -Math.abs(gState.vy);
+        playPluck(440);
+      }
+      gState.bricks.forEach(b => {
+        if (b.alive && gState.bx >= b.x && gState.bx <= b.x+32 && gState.by >= b.y && gState.by <= b.y+14) {
+          b.alive = false;
+          gState.vy = -gState.vy;
+          gState.score += 10;
+          playPluck(659);
+        }
+      });
+      if (gState.by > 210) { gState.bx = 120; gState.by = 140; gState.vy = -3.0; }
+      document.getElementById('gameScoreBadge').textContent = `得分:${gState.score}`;
+
+      ctx.fillStyle = '#FFF6B3';
+      ctx.fillRect(0, 0, 240, 212);
+      gState.bricks.forEach(b => {
+        if (!b.alive) return;
+        ctx.fillStyle = b.color;
+        ctx.fillRect(b.x, b.y, 32, 14);
+        ctx.strokeStyle = '#262D5C';
+        ctx.strokeRect(b.x, b.y, 32, 14);
+      });
+      ctx.fillStyle = '#262D5C';
+      ctx.beginPath(); ctx.arc(gState.bx, gState.by, 6, 0, Math.PI*2); ctx.fill();
+      ctx.fillRect(gState.px, 190, 56, 10);
+    }, 28);
+  } else if (id === 4) {
+    // 4. 陀螺仪体感滚球迷宫 & 摇骰子
+    document.getElementById('gameHeaderTitle').textContent = '体感迷宫&骰子';
+    gState = { bx: 30, by: 30, dice: 6, wins: 0 };
+    gameLoop = setInterval(() => {
+      const ax = parseFloat(document.getElementById('imuX').value) / 10;
+      const ay = parseFloat(document.getElementById('imuY').value) / 10;
+      gState.bx = Math.max(14, Math.min(226, gState.bx + ax * 5));
+      gState.by = Math.max(14, Math.min(155, gState.by + ay * 5));
+
+      // 迷宫中间隔墙碰撞
+      if (gState.bx > 70 && gState.bx < 84 && gState.by < 115) gState.bx = 70;
+      if (gState.bx > 145 && gState.bx < 159 && gState.by > 55) gState.bx = 145;
+
+      // 到达右下角绿色终点
+      if (Math.hypot(gState.bx - 205, gState.by - 135) < 18) {
+        gState.wins++;
+        playPluck(784);
+        gState.bx = 30; gState.by = 30;
+      }
+      document.getElementById('gameScoreBadge').textContent = `过关:${gState.wins}`;
+
+      ctx.fillStyle = '#FFF6B3';
+      ctx.fillRect(0, 0, 240, 212);
+      // 迷宫墙壁
+      ctx.fillStyle = '#262D5C';
+      ctx.fillRect(74, 0, 8, 110);
+      ctx.fillRect(148, 60, 8, 108);
+      // 终点
+      ctx.fillStyle = '#00E676';
+      ctx.beginPath(); ctx.arc(205, 135, 14, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = '#262D5C'; ctx.stroke();
+      // 小球
+      ctx.fillStyle = '#FF5252';
+      ctx.beginPath(); ctx.arc(gState.bx, gState.by, 9, 0, Math.PI*2); ctx.fill();
+      ctx.stroke();
+
+      // 底部摇骰子栏
+      ctx.fillStyle = '#262D5C';
+      ctx.fillRect(12, 172, 216, 32);
+      ctx.fillStyle = '#FFF6B3';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillText(`🎲 当前骰子: [ ${gState.dice} 点 ] (点此或摇机身)`, 24, 192);
+    }, 35);
+  }
+}
+
+function draw2048() {
+  ctx.fillStyle = '#FFF6B3';
+  ctx.fillRect(0, 0, 240, 212);
+  for (let r=0; r<4; r++) {
+    for (let c=0; c<4; c++) {
+      const v = gState.grid[r][c];
+      const x = 18 + c * 52, y = 8 + r * 49;
+      ctx.fillStyle = v ? '#FF8A80' : '#FFEA79';
+      ctx.fillRect(x, y, 46, 43);
+      ctx.strokeStyle = '#262D5C';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, 46, 43);
+      if (v) {
+        ctx.fillStyle = '#262D5C';
+        ctx.font = 'bold 15px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(String(v), x + 23, y + 27);
+      }
+    }
+  }
+  ctx.textAlign = 'start';
+  document.getElementById('gameScoreBadge').textContent = `分:${gState.score}`;
+}
+
+function slide2048Dir(dir) {
+  if (activeGame !== 2) return;
+  let moved = false;
+  const g = gState.grid;
+  const slideRow = row => {
+    const arr = row.filter(x => x);
+    for (let i=0; i<arr.length-1; i++) {
+      if (arr[i] === arr[i+1]) { arr[i]*=2; gState.score+=arr[i]; arr.splice(i+1,1); }
+    }
+    while (arr.length < 4) arr.push(0);
+    return arr;
+  };
+  for (let i=0; i<4; i++) {
+    let line = [];
+    for (let j=0; j<4; j++) {
+      if (dir==='L') line.push(g[i][j]);
+      if (dir==='R') line.push(g[i][3-j]);
+      if (dir==='U') line.push(g[j][i]);
+      if (dir==='D') line.push(g[3-j][i]);
+    }
+    const res = slideRow(line);
+    for (let j=0; j<4; j++) {
+      const val = res[j];
+      if (dir==='L' && g[i][j]!==val) { g[i][j]=val; moved=true; }
+      if (dir==='R' && g[i][3-j]!==val) { g[i][3-j]=val; moved=true; }
+      if (dir==='U' && g[j][i]!==val) { g[j][i]=val; moved=true; }
+      if (dir==='D' && g[3-j][i]!==val) { g[3-j][i]=val; moved=true; }
+    }
+  }
+  if (moved) {
+    const empties = [];
+    for (let r=0;r<4;r++) for (let c=0;c<4;c++) if (!g[r][c]) empties.push([r,c]);
+    if (empties.length) {
+      const [er, ec] = empties[Math.floor(Math.random()*empties.length)];
+      g[er][ec] = Math.random() < 0.8 ? 2 : 4;
+    }
+    playPluck(523);
+    draw2048();
+  }
+}
+
+cvs.addEventListener('mousemove', e => {
+  if (activeGame !== 1 && activeGame !== 3) return;
+  const rect = cvs.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * (240 / rect.width);
+  gState.px = Math.max(4, Math.min(184, x - 26));
+});
+
+cvs.addEventListener('click', e => {
+  const rect = cvs.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * (240 / rect.width);
+  const y = (e.clientY - rect.top) * (212 / rect.height);
+  if (activeGame === 2) {
+    const dx = x - 120, dy = y - 106;
+    if (Math.abs(dx) > Math.abs(dy)) slide2048Dir(dx > 0 ? 'R' : 'L');
+    else slide2048Dir(dy > 0 ? 'D' : 'U');
+  } else if (activeGame === 4 && y > 165) {
+    gState.dice = 1 + Math.floor(Math.random() * 6);
+    playPluck(659);
+  } else if (activeGame === 4) {
+    gState.bx = x; gState.by = y;
+  }
+});
+
+window.addEventListener('keydown', e => {
+  if (activeGame === 2) {
+    if (e.key === 'ArrowLeft') slide2048Dir('L');
+    if (e.key === 'ArrowRight') slide2048Dir('R');
+    if (e.key === 'ArrowUp') slide2048Dir('U');
+    if (e.key === 'ArrowDown') slide2048Dir('D');
+  }
+});
+
+// 6. 设置与陀螺仪模拟
+function onVolChange(v) {
+  systemVolume = v / 100;
+  document.getElementById('volValLbl').textContent = v + '%';
+}
+function adjustVolume(delta) {
+  const slider = document.getElementById('volRange');
+  const nv = Math.max(0, Math.min(100, parseInt(slider.value) + delta));
+  slider.value = nv;
+  onVolChange(nv);
+}
+function onBriChange(v) {
+  document.getElementById('briValLbl').textContent = v + '%';
+  document.getElementById('briMask').style.opacity = ((100 - v) / 115).toFixed(2);
+}
+function toggleEchoGuard(checked) {
+  const tag = document.getElementById('micGuardTag');
+  tag.textContent = checked ? '防回声开' : '防回声关';
+  tag.style.background = checked ? '#b9f6ca' : '#ffcdd2';
+}
+function simulateReconfigWifi() {
+  document.getElementById('setSsid').textContent = '配网热点: Xiaozhi-FA75';
+  setTimeout(() => {
+    document.getElementById('setSsid').textContent = 'Home-WiFi-2.4G';
+  }, 2000);
+}
+function updateImuTilt() {
+  const x = (document.getElementById('imuX').value / 10).toFixed(1);
+  const y = (document.getElementById('imuY').value / 10).toFixed(1);
+  document.getElementById('imuXVal').textContent = x + 'g';
+  document.getElementById('imuYVal').textContent = y + 'g';
+  document.getElementById('cubeShell').style.transform = `rotateY(${x*12}deg) rotateX(${-y*12}deg)`;
+}
+function shakeCube() {
+  const shell = document.getElementById('cubeShell');
+  shell.style.transform = 'translateX(-14px) rotate(-6deg)';
+  setTimeout(() => shell.style.transform = 'translateX(14px) rotate(6deg)', 80);
+  setTimeout(() => shell.style.transform = 'none', 180);
+  playPluck(587);
+  if (activeGame === 4) {
+    gState.dice = 1 + Math.floor(Math.random() * 6);
+  } else if (currentApp === 'AI_CHAT') {
+    cycleAiEmotion();
+  }
+}
+
+// 支持通过 URL hash 直接打开某个页面，例如 index.html#LAUNCHER
+if (location.hash) openApp(location.hash.slice(1).toUpperCase());
+</script>
+</body>
+</html>

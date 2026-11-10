@@ -1,0 +1,30 @@
+{
+  "bot_name": "CubePaw 方小爪",
+  "description": "专为孩子定制的桌面萌宠语音玩具",
+  "hardware": {
+    "brand": "Waveshare (微雪)",
+    "chip": "ESP32-S3",
+    "screen": "1.54 inch 240x240 ST7789 IPS LCD",
+    "audio": "On-board Codec + Mic + Speaker",
+    "interaction": "Single-click button to speak / interrupt"
+  },
+  "recommended_services": {
+    "llm": {
+      "provider": "DeepSeek / Qwen",
+      "model": "deepseek-chat / qwen-plus",
+      "temperature": 0.7,
+      "max_tokens": 300
+    },
+    "tts": {
+      "provider": "Volcengine (火山引擎 / 豆包) / Aliyun Bailian",
+      "voice_role": "阳光少儿 / 软萌童音 / 温柔故事姐姐",
+      "speed": 1.0,
+      "pitch": 1.0
+    },
+    "stt": {
+      "provider": "FunASR / Whisper / Baidu",
+      "language": "zh-CN / en-US"
+    }
+  },
+  "safety_filter_enabled": true
+}

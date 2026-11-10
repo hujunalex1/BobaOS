@@ -1,0 +1,17 @@
+--- a/main/application.cc
++++ b/main/application.cc
+@@ -12,6 +12,7 @@
+ #include "board.h"
+ #include "display.h"
+ #include "system_info.h"
++#include "cubepaw_os.h"
+ 
+ void Application::OnAudioInput() {
+     // 【CubePaw 防回声自激补丁】
++    // 当设备处于 Speaking（播报故事/回答）状态且开启了防回声闭麦时，
++    // 忽略麦克风输入流，防止紧凑机身内喇叭声音震动麦克风导致自己打断自己、识别残音胡言乱语
++    if (device_state_ == kDeviceStateSpeaking &&
++        cubepaw::CubePawOS::GetInstance().IsAntiEchoMuteEnabled()) {
++        return;
++    }
+ }

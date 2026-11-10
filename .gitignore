@@ -1,0 +1,35 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.venv
+.env
+
+# ESP-IDF & CMake Build Artifacts
+artifacts/
+build/
+*.ninja
+.ninja_*
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.elf
+*.map
+
+# Component Manager cache & auto-downloaded dependencies
+**/managed_components/
+**/dependencies/managed_components/
+**/Espressif/ComponentManager/Cache/
+
+# Editors & IDEs
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace

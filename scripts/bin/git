@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+import os, sys
+
+if "submodule" in sys.argv:
+    sys.exit(0)
+
+os.execv("/usr/bin/git", ["/usr/bin/git"] + sys.argv[1:])

@@ -1,0 +1,17 @@
+idf_component_register(
+    SRCS
+        "src/cubepaw_os.cc"
+        "src/app_watchface.cc"
+        "src/app_launcher.cc"
+        "src/app_music.cc"
+        "src/app_gallery.cc"
+        "src/app_games.cc"
+        "src/app_settings.cc"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        lvgl
+        esp_timer
+        fatfs
+        nvs_flash
+)

@@ -1,0 +1,32 @@
+name: Build CubePaw OS Firmware (ESP32-S3-Touch-LCD-1.54)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build-firmware:
+    runs-on: ubuntu-latest
+    container: espressif/idf:release-v5.4
+    steps:
+      - name: Checkout CubePaw Repository
+        uses: actions/checkout@v4
+
+      - name: Clone xiaozhi-esp32 Base & Inject CubePaw OS
+        run: |
+          git clone --depth=1 https://github.com/78/xiaozhi-esp32.git /tmp/xiaozhi-esp32
+          mkdir -p /tmp/xiaozhi-esp32/components/cubepaw_os
+          cp -R firmware/* /tmp/xiaozhi-esp32/components/cubepaw_os/
+
+      - name: Build ESP32-S3 Firmware for Waveshare 1.54 Touch LCD
+        working-directory: /tmp/xiaozhi-esp32
+        run: |
+          idf.py set-target esp32s3
+          idf.py build
+
+      - name: Upload Compiled Firmware Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cubepaw-os-esp32s3-1.54-firmware
+          path: /tmp/xiaozhi-esp32/build/*.bin
