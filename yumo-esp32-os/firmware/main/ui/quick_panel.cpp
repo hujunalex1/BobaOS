@@ -19,6 +19,7 @@
 #include "core/mp3_player.hpp"
 #include "core/fc_emulator.hpp"
 #include "core/password_vault.hpp"
+#include "core/event_bus.hpp"
 #include <algorithm>
 #include <cstdio>
 namespace ui {
@@ -31,6 +32,55 @@ lv_indev_read_cb_t originalRead=nullptr;
 lv_obj_t *sheet=nullptr,*dialog=nullptr,*toast=nullptr,*pressedObject=nullptr;
 lv_obj_t *brightness=nullptr,*volume=nullptr,*values[2]{},*tiles[3]{},*usb=nullptr,*usbText=nullptr;
 quick::Swipe swipe;
+
+// 统一边缘右滑退出手势模型
+struct EdgeBackSwipe {
+    bool down=false, candidate=false, captured=false;
+    int startX=0, startY=0;
+    uint32_t began=0;
+
+    void cancel() { candidate=false; captured=down; }
+
+    bool update(bool pressed, int px, int py, uint32_t now, bool eligible) {
+        if(captured) {
+            if(!pressed) { captured = down = false; }
+            return false;
+        }
+        if(!pressed) {
+            down = candidate = false;
+            return false;
+        }
+        if(!down) {
+            down = true;
+            startX = px;
+            startY = py;
+            began = now;
+            // 边缘判定区：手指从屏幕左侧边缘 (0..28px) 开始向右滑动
+            candidate = eligible && (px >= 0 && px <= 28);
+        }
+        if(!candidate) return false;
+
+        const int dx = px - startX;
+        const int dy = py - startY;
+        const int absDy = dy < 0 ? -dy : dy;
+
+        // 向右滑动超过 36px 且水平位移明显大于垂直位移，触发退出/返回
+        if(dx >= 36 && dx > absDy * 4 / 3) {
+            candidate = false;
+            captured = true;
+            return true;
+        }
+
+        // 若向左滑动、垂直位移过大 (大于32px) 或滑动超时 (超过600ms)，放弃拦截
+        if(dx < -6 || absDy >= 32 || uint32_t(now - began) > 600) {
+            candidate = false;
+            return false;
+        }
+
+        return false;
+    }
+};
+static EdgeBackSwipe edgeBackSwipe;
 bool openPending=false,closePending=false,usbTarget=false,usbWasBusy=false,deepWaiting=false,blockPageEvents=false;
 Action pending=Action::None;
 uint32_t nextRefresh=0,toastAt=0,resultRevision[3]{};
@@ -52,6 +102,7 @@ void observe(lv_event_t *e) {
 }
 void cancelPointer() {
     // Clear app-specific press latches as well as LVGL's pressed/scroll state.
+    edgeBackSwipe.cancel();
     auto object=pressedObject;forgetPressed();
     if(object)lv_obj_send_event(object,LV_EVENT_PRESS_LOST,pointer);
     if(pointer)lv_indev_reset(pointer,nullptr);
@@ -70,6 +121,23 @@ void readPointer(lv_indev_t *input,lv_indev_data_t *data) {
     }
     if(route==quick::Route::Open||route==quick::Route::Close||route==quick::Route::Consume)
         data->state=LV_INDEV_STATE_RELEASED;
+
+    // 统一边缘右滑退出手势 (Unified Edge Back Swipe)
+    // 仅在打开应用时（非桌面）、未拉下控制面板时生效
+    if(!swipe.down && !sheet && !WindowManager::instance().atHome() && eligible) {
+        const bool backTriggered = edgeBackSwipe.update(
+            data->state==LV_INDEV_STATE_PRESSED, data->point.x, data->point.y, lv_tick_get(), true);
+        if(backTriggered) {
+            cancelPointer();
+            data->state = LV_INDEV_STATE_RELEASED;
+            sys::EventBus::publish({sys::EventType::BackRequested});
+        } else if(edgeBackSwipe.captured || edgeBackSwipe.candidate) {
+            if(edgeBackSwipe.candidate) data->point = {edgeBackSwipe.startX, edgeBackSwipe.startY};
+            if(edgeBackSwipe.captured) data->state = LV_INDEV_STATE_RELEASED;
+        }
+    } else {
+        if(data->state != LV_INDEV_STATE_PRESSED) edgeBackSwipe.cancel();
+    }
 }
 lv_obj_t *text(lv_obj_t *parent,const char *s,int x,int y,int w) {
     auto label=c::label(parent,s,w);lv_obj_set_pos(label,x,y);return label;
@@ -259,7 +327,7 @@ bool QuickPanel::visible(){return sheet||openPending;}
 lv_obj_t *QuickPanel::root(){return sheet;}
 void QuickPanel::close() {
     if(visible())blockPageEvents=true;
-    openPending=closePending=false;pending=Action::None;swipe.cancel();
+    openPending=closePending=false;pending=Action::None;swipe.cancel();edgeBackSwipe.cancel();
     deepWaiting=false;
     if(!sheet)return;
     cancelPointer();sys::Buttons::setSystemPanel(false);ExternalKeyboard::rescope();

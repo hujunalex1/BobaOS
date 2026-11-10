@@ -70,6 +70,11 @@ static float s_filteredGy = 0.38f;
 static uint32_t s_bobaTick = 0;
 static float s_lastShakeMag = 1.0f;
 static uint32_t s_lastShakeTick = 0;
+static float s_lastSampleX = 0.0f;
+static float s_lastSampleY = 0.0f;
+static float s_lastSampleZ = 1.0f;
+static uint32_t s_lastMotionTick = 0;
+static bool s_isSnoozing = false;
 
 static void popBalls(float strength = 1.0f) {
     for(int i = 0; i < kNumBalls; ++i) {
@@ -87,6 +92,9 @@ static void physicsTick(lv_timer_t *) {
 
     s_bobaTick++;
 
+    const uint32_t now = lv_tick_get();
+    if(s_lastMotionTick == 0) s_lastMotionTick = now;
+
     float targetGx = 0.0f;
     float targetGy = 0.38f;
 
@@ -95,12 +103,44 @@ static void physicsTick(lv_timer_t *) {
         const bool ok = sys::Qmi8658::temporaryAcceleration(s_imuLease, sample);
         if(ok) {
             sys::ScreenOrientation::mapAcceleration(sample.value);
+
+            // 静止休眠判定 (Stationary Snooze Detection)
+            const float dAccel = std::abs(sample.value.x - s_lastSampleX) +
+                                 std::abs(sample.value.y - s_lastSampleY) +
+                                 std::abs(sample.value.z - s_lastSampleZ);
+            s_lastSampleX = sample.value.x;
+            s_lastSampleY = sample.value.y;
+            s_lastSampleZ = sample.value.z;
+
+            if(dAccel > 0.08f) {
+                // 检测到明显移动/拿起手表：刷新活跃时间，若此前在降频休眠则立即拉满 30Hz
+                s_lastMotionTick = now;
+                if(s_isSnoozing && s_physicsTimer) {
+                    s_isSnoozing = false;
+                    lv_timer_set_period(s_physicsTimer, 33);
+                    popBalls(0.4f); // 唤醒时轻柔微弹跳
+                }
+            } else {
+                // 几乎无加速度变化：手表平放静置中
+                const uint32_t stillMs = now - s_lastMotionTick;
+                // 静置 8 秒：降低物理刷新率至 6Hz (160ms)，节省 CPU 算力
+                if(stillMs >= 8000 && !s_isSnoozing && s_physicsTimer) {
+                    s_isSnoozing = true;
+                    lv_timer_set_period(s_physicsTimer, 160);
+                }
+                // 静置 25 秒：自动提前熄屏省电
+                if(stillMs >= 25000) {
+                    s_lastMotionTick = now;
+                    sys::Power::automaticScreenOff();
+                }
+            }
+
             const float magSq = sample.value.x * sample.value.x + sample.value.y * sample.value.y + sample.value.z * sample.value.z;
             const float mag = std::sqrt(magSq);
 
-            const uint32_t now = lv_tick_get();
             if(std::abs(mag - s_lastShakeMag) > 1.3f && int32_t(now - s_lastShakeTick) > 350) {
                 s_lastShakeTick = now;
+                s_lastMotionTick = now;
                 popBalls(1.1f);
             }
             s_lastShakeMag = mag;
@@ -158,36 +198,39 @@ static void physicsTick(lv_timer_t *) {
         }
     }
 
-    for(int i = 0; i < kNumBalls; ++i) {
-        for(int j = i + 1; j < kNumBalls; ++j) {
-            auto &b1 = s_balls[i];
-            auto &b2 = s_balls[j];
-            if(!b1.obj || !b2.obj) continue;
+    // 静止休眠模式下小球已经静止沉底，跳过 O(N^2) 两两碰撞循环
+    if(!s_isSnoozing) {
+        for(int i = 0; i < kNumBalls; ++i) {
+            for(int j = i + 1; j < kNumBalls; ++j) {
+                auto &b1 = s_balls[i];
+                auto &b2 = s_balls[j];
+                if(!b1.obj || !b2.obj) continue;
 
-            const float dx = b2.x - b1.x;
-            const float dy = b2.y - b1.y;
-            const float distSq = dx * dx + dy * dy;
-            const float minDist = b1.r + b2.r;
+                const float dx = b2.x - b1.x;
+                const float dy = b2.y - b1.y;
+                const float distSq = dx * dx + dy * dy;
+                const float minDist = b1.r + b2.r;
 
-            if(distSq < minDist * minDist && distSq > 0.0001f) {
-                const float dist = std::sqrt(distSq);
-                const float overlap = 0.5f * (minDist - dist);
-                const float nx = dx / dist;
-                const float ny = dy / dist;
+                if(distSq < minDist * minDist && distSq > 0.0001f) {
+                    const float dist = std::sqrt(distSq);
+                    const float overlap = 0.5f * (minDist - dist);
+                    const float nx = dx / dist;
+                    const float ny = dy / dist;
 
-                b1.x -= nx * overlap;
-                b1.y -= ny * overlap;
-                b2.x += nx * overlap;
-                b2.y += ny * overlap;
+                    b1.x -= nx * overlap;
+                    b1.y -= ny * overlap;
+                    b2.x += nx * overlap;
+                    b2.y += ny * overlap;
 
-                const float kx = b1.vx - b2.vx;
-                const float ky = b1.vy - b2.vy;
-                const float p = 2.0f * (nx * kx + ny * ky) / (b1.mass + b2.mass);
+                    const float kx = b1.vx - b2.vx;
+                    const float ky = b1.vy - b2.vy;
+                    const float p = 2.0f * (nx * kx + ny * ky) / (b1.mass + b2.mass);
 
-                b1.vx -= p * b2.mass * nx * 0.78f;
-                b1.vy -= p * b2.mass * ny * 0.78f;
-                b2.vx += p * b1.mass * nx * 0.78f;
-                b2.vy += p * b1.mass * ny * 0.78f;
+                    b1.vx -= p * b2.mass * nx * 0.78f;
+                    b1.vy -= p * b2.mass * ny * 0.78f;
+                    b2.vx += p * b1.mass * nx * 0.78f;
+                    b2.vy += p * b1.mass * ny * 0.78f;
+                }
             }
         }
     }
@@ -262,6 +305,11 @@ bool checkCandySwipe(int dx, int dy, int threshold) {
 
 void candySwipeEvent(lv_event_t *event) {
     if(!candyMode) return;
+    s_lastMotionTick = lv_tick_get();
+    if(s_isSnoozing && s_physicsTimer) {
+        s_isSnoozing = false;
+        lv_timer_set_period(s_physicsTimer, 33);
+    }
     const auto code = lv_event_get_code(event);
     auto input = lv_indev_active();
     if(code == LV_EVENT_PRESSED) {
@@ -1035,6 +1083,8 @@ void HomeScreen::build(lv_obj_t *parent)
             lv_timer_delete(s_physicsTimer);
             s_physicsTimer = nullptr;
         }
+        s_isSnoozing = false;
+        s_lastMotionTick = 0;
         if(s_imuLease != 0) {
             sys::Qmi8658::releaseTemporaryUse(s_imuLease);
             s_imuLease = 0;
