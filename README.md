@@ -1,4 +1,4 @@
-# 🧋 BobaOS (波波 OS) / CubePaw - Kids Cute Watch OS
+# 🧋 BobaOS (波波 OS) - Kids Cute Watch OS
 
 > 专为 **Waveshare ESP32-S3-Touch-LCD-1.54** 打造的治愈系女童智能手表操作系统。
 > **本项目基于优秀的开源项目 [雨墨 OS (Yumo OS)](./yumo-esp32-os) 进行二次开发与深度重构改造。**
@@ -56,7 +56,7 @@ chmod +x flash.sh
 ./flash.sh /dev/cu.usbmodem2101
 ```
 
-> 固件包文件：`yumo-kids-os-merged.bin`（约 5.9MB），包含了从 `0x0000` 开始的 Bootloader、分区表、OTA 数据及应用程序全部内容。
+> 固件包文件：`boba-os-merged.bin`（约 5.9MB），包含了从 `0x0000` 开始的 Bootloader、分区表、OTA 数据及应用程序全部内容。
 
 ---
 
@@ -72,15 +72,15 @@ python3 scripts/build.py
 构建脚本会自动完成以下步骤：
 1. 增量或全新配置 CMake 工程
 2. 调用 Ninja 进行并行编译
-3. 自动合并生成最新的 `yumo-kids-os-merged.bin`
+3. 自动合并生成最新的 `boba-os-merged.bin`
 
 ---
 
 ## 📁 目录结构
 
 ```text
-CubePaw/
-├── yumo-kids-os-merged.bin      # 开箱即用的全量合并固件包 (0x0 地址直刷)
+BobaOS/
+├── boba-os-merged.bin           # 开箱即用的全量合并固件包 (0x0 地址直刷)
 ├── flash.sh                     # 终端一键烧录脚本
 ├── README.md                    # 项目说明文档
 ├── .gitignore                   # Git 忽略配置

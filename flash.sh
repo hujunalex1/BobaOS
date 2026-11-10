@@ -5,7 +5,10 @@ PORT="${1:-$(ls /dev/cu.usbmodem* 2>/dev/null | head -n 1)}"
 PORT="${PORT:-/dev/cu.usbmodem2101}"
 
 SCRIPT_DIR="${0:A:h}"
-BIN="$SCRIPT_DIR/yumo-kids-os-merged.bin"
+BIN="$SCRIPT_DIR/boba-os-merged.bin"
+if [ ! -f "$BIN" ]; then
+  BIN="$SCRIPT_DIR/yumo-kids-os-merged.bin"
+fi
 
 if [ ! -f "$BIN" ]; then
   echo "❌ 找不到固件文件: $BIN"
@@ -19,7 +22,7 @@ if ! command -v esptool.py &>/dev/null; then
   fi
 fi
 
-echo "正在向 $PORT 烧录 CubePaw 萌宠系统 (yumo-kids-os-merged.bin)..."
+echo "正在向 $PORT 烧录 BobaOS (波波系统: $BIN)..."
 eval $ESPTOOL --chip esp32s3 -p "$PORT" -b 921600 \
   --before default-reset --after hard-reset write-flash \
   --flash-mode dio --flash-size 16MB 0x0 "$BIN"

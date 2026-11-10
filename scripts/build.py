@@ -59,8 +59,8 @@ print("=== Building with Ninja ===", flush=True)
 subprocess.run([str(NINJA), "-C", str(BUILD)], env=env, check=True)
 
 # Update merged bin at root
-print("=== Updating yumo-kids-os-merged.bin ===", flush=True)
-merged_bin = REPO_ROOT / "yumo-kids-os-merged.bin"
+print("=== Updating boba-os-merged.bin ===", flush=True)
+merged_bin = REPO_ROOT / "boba-os-merged.bin"
 cmd_merge = [
     str(PY), "-m", "esptool", "--chip", "esp32s3", "merge-bin",
     "-o", str(merged_bin),
