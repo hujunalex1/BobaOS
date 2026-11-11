@@ -55,8 +55,9 @@ struct EdgeBackSwipe {
             startX = px;
             startY = py;
             began = now;
-            // 边缘判定区：手指从屏幕左侧边缘 (0..42px) 开始向右滑动
-            candidate = eligible && (px >= 0 && px <= 42);
+            // 边缘判定区：手指从屏幕左侧边缘 (0..40px) 且在垂直中部 (40..180px) 开始向右滑动
+            // 避开顶栏返回键 (y < 40) 和底栏功能按键 (y >= 180)
+            candidate = eligible && (px >= 0 && px <= 40) && (py >= 40 && py < 180);
         }
         if(!candidate) return false;
 

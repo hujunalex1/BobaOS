@@ -125,11 +125,13 @@ lv_obj_t *Garden::button(lv_obj_t *parent,const char *caption,int command,int x,
     }
     auto title=label(obj,caption,tx,ty,tw);lv_obj_set_style_text_align(title,LV_TEXT_ALIGN_CENTER,0);
     lv_obj_set_clickable(title,false);
+    if(w<=60) lv_obj_set_ext_click_area(obj,4);
     if(w<=48 && h<=48) lv_obj_set_ext_click_area(obj,8);
     if(detail){
         const int sy=w<120?(h>=100?85:50):h-24;
         auto sub=label(obj,detail,tx,sy,tw);lv_obj_set_style_text_align(sub,LV_TEXT_ALIGN_CENTER,0);
         lv_obj_set_style_text_color(sub,lv_color_hex(0x788360),0);
+        lv_obj_set_clickable(sub,false);
     }
     if(rune){
         // Read-only during the demonstration, but never faded by the disabled style.
@@ -391,11 +393,11 @@ void Garden::draw(){
         const char *name=state.form==g::None?"萌芽物语":(state.form&1?g::RouteData[state.form/2].rare:g::RouteData[state.form/2].normal);
         homeHeader(name);
         const bool pending=state.event!=g::None || state.miniLength;
-        button(root(),pending?"继续":"照料",pending?Continue:ToCare,3,187,46,50);
-        button(root(),"培养",ToTrain,50,187,46,50);button(root(),"冒险",ToExplore,97,187,46,50);
-        button(root(),"家园",ToHouse,144,187,46,50);button(root(),"图鉴",ToAlbum,191,187,46,50);
+        button(root(),pending?"继续":"照料",pending?Continue:ToCare,2,184,46,55);
+        button(root(),"培养",ToTrain,49,184,46,55);button(root(),"冒险",ToExplore,97,184,46,55);
+        button(root(),"家园",ToHouse,145,184,46,55);button(root(),"图鉴",ToAlbum,192,184,46,55);
         if(pending){c::disabled(bindings[buttonCount-4].object,true);c::disabled(bindings[buttonCount-3].object,true);}
-        message(163);break;}
+        message(160);break;}
     case Page::Care:{
         std::snprintf(text,sizeof(text),"果子 %u · 体力 %u",unsigned(state.fruit),unsigned(state.energy));header("照料背包",text);
         const char *captions[]={"喂食","休息","清洁","陪伴","料理","记忆"};
