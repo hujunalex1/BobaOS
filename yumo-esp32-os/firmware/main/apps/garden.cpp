@@ -5,6 +5,7 @@
 #include "ui/window_mgr.hpp"
 #include "core/power_mgr.hpp"
 #include "core/button_mgr.hpp"
+#include "core/event_bus.hpp"
 #include "esp_random.h"
 #include <algorithm>
 #include <cerrno>
@@ -123,6 +124,8 @@ lv_obj_t *Garden::button(lv_obj_t *parent,const char *caption,int command,int x,
         tx=size+13;tw=w-tx-7;if(detail)ty=6;
     }
     auto title=label(obj,caption,tx,ty,tw);lv_obj_set_style_text_align(title,LV_TEXT_ALIGN_CENTER,0);
+    lv_obj_set_clickable(title,false);
+    if(w<=48 && h<=48) lv_obj_set_ext_click_area(obj,8);
     if(detail){
         const int sy=w<120?(h>=100?85:50):h-24;
         auto sub=label(obj,detail,tx,sy,tw);lv_obj_set_style_text_align(sub,LV_TEXT_ALIGN_CENTER,0);
@@ -292,7 +295,10 @@ void Garden::touch(lv_event_t *event){
 }
 void Garden::dispatch(int command){
     if(command==Interact){petStart=lv_tick_get();petActive=true;petVariant=(petVariant+1)%3;animate(true);return;}
-    if(command==Back){if(!onBack())ui::WindowManager::instance().goHome();return;}
+    if(command==Back){
+        if(!onBack()) sys::EventBus::publish({sys::EventType::HomeRequested});
+        return;
+    }
     if(command==Retry){if(job)return;if(saveError){error=0;show(Page::Home);persist();}else beginLoad();return;}
     if(command==Temporary){
         const bool continuing=saveError;temporary=true;dirty=false;loaded=true;saveError=false;error=0;

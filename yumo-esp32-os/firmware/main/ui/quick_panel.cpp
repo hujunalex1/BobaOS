@@ -55,8 +55,8 @@ struct EdgeBackSwipe {
             startX = px;
             startY = py;
             began = now;
-            // 边缘判定区：手指从屏幕左侧边缘 (0..28px) 开始向右滑动
-            candidate = eligible && (px >= 0 && px <= 28);
+            // 边缘判定区：手指从屏幕左侧边缘 (0..42px) 开始向右滑动
+            candidate = eligible && (px >= 0 && px <= 42);
         }
         if(!candidate) return false;
 
@@ -64,15 +64,15 @@ struct EdgeBackSwipe {
         const int dy = py - startY;
         const int absDy = dy < 0 ? -dy : dy;
 
-        // 向右滑动超过 36px 且水平位移明显大于垂直位移，触发退出/返回
-        if(dx >= 36 && dx > absDy * 4 / 3) {
+        // 向右滑动超过 32px 且水平位移明显大于垂直位移，触发退出/返回
+        if(dx >= 32 && dx > (absDy * 6 / 5)) {
             candidate = false;
             captured = true;
             return true;
         }
 
-        // 若向左滑动、垂直位移过大 (大于32px) 或滑动超时 (超过600ms)，放弃拦截
-        if(dx < -6 || absDy >= 32 || uint32_t(now - began) > 600) {
+        // 若向左滑动超过 8px、垂直位移过大 (大于36px) 或滑动超时 (超过700ms)，放弃拦截
+        if(dx < -8 || absDy >= 36 || uint32_t(now - began) > 700) {
             candidate = false;
             return false;
         }
@@ -123,17 +123,21 @@ void readPointer(lv_indev_t *input,lv_indev_data_t *data) {
         data->state=LV_INDEV_STATE_RELEASED;
 
     // 统一边缘右滑退出手势 (Unified Edge Back Swipe)
-    // 仅在打开应用时（非桌面）、未拉下控制面板时生效
-    if(!swipe.down && !sheet && !WindowManager::instance().atHome() && eligible) {
+    // 仅在打开应用时（非桌面）、未拉下控制面板且未在执行下拉动作时生效
+    const bool backEligible = sys::Power::isScreenOn() && !sys::Power::sleepPending() &&
+                              !sheet && !openPending && !closePending &&
+                              !swipe.captured && (route != quick::Route::Hold) &&
+                              !WindowManager::instance().atHome();
+
+    if(backEligible) {
         const bool backTriggered = edgeBackSwipe.update(
-            data->state==LV_INDEV_STATE_PRESSED, data->point.x, data->point.y, lv_tick_get(), true);
+            data->state == LV_INDEV_STATE_PRESSED, data->point.x, data->point.y, lv_tick_get(), true);
         if(backTriggered) {
             cancelPointer();
             data->state = LV_INDEV_STATE_RELEASED;
             sys::EventBus::publish({sys::EventType::BackRequested});
-        } else if(edgeBackSwipe.captured || edgeBackSwipe.candidate) {
-            if(edgeBackSwipe.candidate) data->point = {edgeBackSwipe.startX, edgeBackSwipe.startY};
-            if(edgeBackSwipe.captured) data->state = LV_INDEV_STATE_RELEASED;
+        } else if(edgeBackSwipe.captured) {
+            data->state = LV_INDEV_STATE_RELEASED;
         }
     } else {
         if(data->state != LV_INDEV_STATE_PRESSED) edgeBackSwipe.cancel();

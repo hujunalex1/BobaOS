@@ -3,6 +3,7 @@
 #include "ui/theme.hpp"
 #include "core/settings_store.hpp"
 #include "core/system_service.hpp"
+#include "core/event_bus.hpp"
 #include <algorithm>
 #include <cstdio>
 LV_FONT_DECLARE(lv_font_music_22);
@@ -116,7 +117,10 @@ void Mp3Music::show() {
     lv_obj_set_style_bg_color(pageRoot,lv_color_mix(ui::theme::accent(),ui::theme::bg(),22),0);
     lv_obj_set_style_bg_grad_color(pageRoot,ui::theme::bg(),0);
     lv_obj_set_style_bg_grad_dir(pageRoot,LV_GRAD_DIR_VER,0);
-    lyric[0]=label(LV_SYMBOL_AUDIO,16,8,208,true);
+    auto backBtn=iconButton(LV_SYMBOL_LEFT,15,4,4,38,36);
+    if(auto l=lv_obj_get_child(backBtn,0))lv_obj_set_style_text_font(l,&lv_font_montserrat_18,0);
+    lv_obj_set_ext_click_area(backBtn,8);
+    lyric[0]=label(LV_SYMBOL_AUDIO,46,8,148,true);
     lyric[2]=label("",16,104,208,true);
     for(int i:{0,2}) {lv_obj_set_height(lyric[i],24);lv_obj_set_style_text_align(lyric[i],LV_TEXT_ALIGN_CENTER,0);}
     lyricFocus=c::panel(pageRoot,208,60);lv_obj_set_pos(lyricFocus,16,36);
@@ -203,6 +207,7 @@ void Mp3Music::poll() {
 
 }
 void Mp3Music::action(int id) {
+    if(id==15){sys::EventBus::publish({sys::EventType::BackRequested});return;}
     if(id==14){playback=true;show();poll();return;}
     if(id==2){refresh();return;}
     if(id==13){playback=false;page=selected<0?0:selected/4;show();return;}
