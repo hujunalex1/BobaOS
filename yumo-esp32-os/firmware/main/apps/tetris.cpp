@@ -129,12 +129,15 @@ void Tetris::onCreate(lv_obj_t *parent) {
     lv_obj_set_style_bg_color(screen, lv_color_hex(0x0C0D12), 0);
     lv_obj_set_style_pad_all(screen, 0, 0);
 
-    // Board container & image (left side: x = 6, y = 10, w = 110, h = 220)
-    auto boardBox = c::panel(screen, BoardW + 4, BoardH + 4);
-    lv_obj_set_pos(boardBox, 4, 8);
+    // Top header bar (x = 0, y = 0, w = 240, h = 34)
+    createHud(screen);
+
+    // Center game board container (x = 68, y = 36, w = 104, h = 202)
+    auto boardBox = c::panel(screen, BoardW + 4, BoardH + 2);
+    lv_obj_set_pos(boardBox, 68, 36);
     lv_obj_set_style_pad_all(boardBox, 1, 0);
-    lv_obj_set_style_radius(boardBox, 6, 0);
-    lv_obj_set_style_bg_color(boardBox, lv_color_hex(0x1B1F2A), 0);
+    lv_obj_set_style_radius(boardBox, 4, 0);
+    lv_obj_set_style_bg_color(boardBox, lv_color_hex(0x0E1118), 0);
     lv_obj_set_style_border_width(boardBox, 1, 0);
     lv_obj_set_style_border_color(boardBox, lv_color_hex(0x384157), 0);
 
@@ -143,7 +146,7 @@ void Tetris::onCreate(lv_obj_t *parent) {
     lv_obj_align(boardImg, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_clickable(boardImg, true);
 
-    // Touch gesture handler on board
+    // Touch gesture handler on center board
     lv_obj_add_event_cb(boardImg, [](lv_event_t *e) {
         auto self = static_cast<Tetris *>(lv_event_get_user_data(e));
         if (self->paused || self->gameOver) return;
@@ -202,10 +205,7 @@ void Tetris::onCreate(lv_obj_t *parent) {
         }
     }, LV_EVENT_ALL, this);
 
-    // Right-side HUD (preview, score, lines)
-    createHud(screen);
-
-    // Right-side touch control buttons
+    // Left and right wing arcade controls
     createControls(screen);
 
     // Pause / Game over dialog overlay
@@ -262,47 +262,81 @@ void Tetris::onCreate(lv_obj_t *parent) {
 }
 
 void Tetris::createHud(lv_obj_t *parent) {
-    // Next piece card (x = 120, y = 6, w = 116, h = 58)
-    auto nextBox = c::panel(parent, 116, 58);
-    lv_obj_set_pos(nextBox, 120, 6);
-    lv_obj_set_style_pad_all(nextBox, 4, 0);
-    lv_obj_set_style_radius(nextBox, 8, 0);
-    lv_obj_set_style_bg_color(nextBox, lv_color_hex(0x181C26), 0);
+    // Top header bar (x = 0, y = 0, w = 240, h = 34)
+    auto header = c::panel(parent, 240, 34);
+    lv_obj_set_pos(header, 0, 0);
+    lv_obj_set_style_pad_all(header, 0, 0);
+    lv_obj_set_style_radius(header, 0, 0);
+    lv_obj_set_style_bg_color(header, lv_color_hex(0x131722), 0);
+    lv_obj_set_style_border_width(header, 1, 0);
+    lv_obj_set_style_border_color(header, lv_color_hex(0x232938), 0);
+    lv_obj_set_style_border_side(header, LV_BORDER_SIDE_BOTTOM, 0);
+
+    // 1. Next piece preview box (x = 4, y = 2, w = 56, h = 30)
+    auto nextBox = c::panel(header, 56, 30);
+    lv_obj_set_pos(nextBox, 4, 2);
+    lv_obj_set_style_pad_all(nextBox, 1, 0);
+    lv_obj_set_style_radius(nextBox, 6, 0);
+    lv_obj_set_style_bg_color(nextBox, lv_color_hex(0x1C2230), 0);
     lv_obj_set_style_border_width(nextBox, 1, 0);
-    lv_obj_set_style_border_color(nextBox, lv_color_hex(0x2C3446), 0);
+    lv_obj_set_style_border_color(nextBox, lv_color_hex(0x2E384D), 0);
 
     previewImg = lv_image_create(nextBox);
     lv_image_set_src(previewImg, &previewDsc);
-    lv_obj_set_pos(previewImg, 4, 4);
+    lv_obj_center(previewImg);
 
-    // Chinese labels use default theme font (fontSmall / fontCjkFull) so Chinese glyphs render
-    auto scoreLabel = c::label(nextBox, "得分", 58);
-    lv_obj_set_pos(scoreLabel, 54, 4);
-    lv_obj_set_style_text_color(scoreLabel, lv_color_hex(0x8C9AA8), 0);
+    // 2. Score & Lines in center (x = 64, y = 1, w = 112, h = 32)
+    auto hudCenter = lv_obj_create(header);
+    lv_obj_remove_style_all(hudCenter);
+    lv_obj_set_pos(hudCenter, 64, 1);
+    lv_obj_set_size(hudCenter, 112, 32);
 
-    scoreVal = c::label(nextBox, "0", 58);
-    lv_obj_set_pos(scoreVal, 54, 18);
+    scoreVal = c::label(hudCenter, "0", 112);
+    lv_obj_set_pos(scoreVal, 0, 0);
+    lv_obj_set_style_text_align(scoreVal, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(scoreVal, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(scoreVal, lv_color_hex(0xFADB14), 0);
 
-    auto linesLabel = c::label(nextBox, "行数", 58);
-    lv_obj_set_pos(linesLabel, 54, 34);
-    lv_obj_set_style_text_color(linesLabel, lv_color_hex(0x8C9AA8), 0);
-
-    linesVal = c::label(nextBox, "0", 30);
-    lv_obj_set_pos(linesVal, 84, 34);
-    lv_obj_set_style_text_font(linesVal, &lv_font_montserrat_14, 0);
+    linesVal = c::label(hudCenter, "行数: 0", 112);
+    lv_obj_set_pos(linesVal, 0, 16);
+    lv_obj_set_style_text_align(linesVal, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(linesVal, t::fontSmall(), 0);
     lv_obj_set_style_text_color(linesVal, lv_color_hex(0x52C41A), 0);
+
+    // 3. Pause button (x = 180, y = 2, w = 56, h = 30)
+    auto pauseBtn = lv_button_create(header);
+    lv_obj_set_pos(pauseBtn, 180, 2);
+    lv_obj_set_size(pauseBtn, 56, 30);
+    lv_obj_set_style_radius(pauseBtn, 6, 0);
+    lv_obj_set_style_bg_color(pauseBtn, lv_color_hex(0x232733), 0);
+    lv_obj_set_style_border_width(pauseBtn, 1, 0);
+    lv_obj_set_style_border_color(pauseBtn, lv_color_hex(0x424B60), 0);
+    lv_obj_set_style_pad_all(pauseBtn, 0, 0);
+    lv_obj_set_ext_click_area(pauseBtn, 4);
+
+    auto pauseLbl = lv_label_create(pauseBtn);
+    lv_obj_set_style_text_font(pauseLbl, t::fontSmall(), 0);
+    lv_obj_set_style_text_color(pauseLbl, lv_color_hex(0xE6E8ED), 0);
+    lv_label_set_text(pauseLbl, LV_SYMBOL_PAUSE " 暂停");
+    lv_obj_center(pauseLbl);
+    lv_obj_clear_flag(pauseLbl, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_add_event_cb(pauseBtn, [](lv_event_t *e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED || lv_event_get_code(e) == LV_EVENT_PRESSED) {
+            auto self = static_cast<Tetris *>(lv_event_get_user_data(e));
+            self->showMenu(false);
+        }
+    }, LV_EVENT_ALL, this);
 }
 
 void Tetris::createControls(lv_obj_t *parent) {
-    auto makeBtn = [this](lv_obj_t *parent, const char *symbol, const char *text,
-                          int x, int y, int w, int h, lv_color_t color, lv_color_t border,
-                          lv_event_cb_t cb) {
+    auto makeWingBtn = [this](lv_obj_t *parent, const char *symbol, const char *text,
+                              int x, int y, int w, int h, lv_color_t color, lv_color_t border,
+                              lv_event_cb_t cb) {
         auto btn = lv_button_create(parent);
         lv_obj_set_pos(btn, x, y);
         lv_obj_set_size(btn, w, h);
-        lv_obj_set_style_radius(btn, 8, 0);
+        lv_obj_set_style_radius(btn, 12, 0);
         lv_obj_set_style_bg_color(btn, color, 0);
         lv_obj_set_style_border_width(btn, 1, 0);
         lv_obj_set_style_border_color(btn, border, 0);
@@ -313,13 +347,10 @@ void Tetris::createControls(lv_obj_t *parent) {
         auto lbl = lv_label_create(btn);
         lv_obj_set_style_text_font(lbl, t::fontSmall(), 0);
         lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
-        if (text && *text) {
-            char buf[32];
-            std::snprintf(buf, sizeof(buf), "%s %s", symbol, text);
-            lv_label_set_text(lbl, buf);
-        } else {
-            lv_label_set_text(lbl, symbol);
-        }
+        lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, 0);
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "%s\n%s", symbol, text);
+        lv_label_set_text(lbl, buf);
         lv_obj_center(lbl);
         lv_obj_clear_flag(lbl, LV_OBJ_FLAG_CLICKABLE);
 
@@ -327,90 +358,82 @@ void Tetris::createControls(lv_obj_t *parent) {
         return btn;
     };
 
-    // 1. Rotate Button (x = 120, y = 68, w = 116, h = 42)
-    makeBtn(parent, LV_SYMBOL_REFRESH, "旋转", 120, 68, 116, 42,
-            lv_color_hex(0x722ED1), lv_color_hex(0x9254DE),
-            [](lv_event_t *e) {
-                if (lv_event_get_code(e) == LV_EVENT_PRESSED) {
+    // --- Left Wing: Left Thumb Area ---
+    // 1. Move Left Button (x = 4, y = 38, w = 60, h = 96)
+    makeWingBtn(parent, LV_SYMBOL_LEFT, "左移", 4, 38, 60, 96,
+                lv_color_hex(0x1D39C4), lv_color_hex(0x2F54EB),
+                [](lv_event_t *e) {
                     auto self = static_cast<Tetris *>(lv_event_get_user_data(e));
-                    if (!self->paused && !self->gameOver) self->rotatePiece(1);
-                }
-            });
-
-    // 2. Left Button (x = 120, y = 114, w = 56, h = 44)
-    makeBtn(parent, LV_SYMBOL_LEFT, "", 120, 114, 56, 44,
-            lv_color_hex(0x1D39C4), lv_color_hex(0x2F54EB),
-            [](lv_event_t *e) {
-                auto self = static_cast<Tetris *>(lv_event_get_user_data(e));
-                lv_event_code_t code = lv_event_get_code(e);
-                if (code == LV_EVENT_PRESSED) {
-                    if (!self->paused && !self->gameOver) {
-                        self->moveLeft();
-                        self->heldDir = HoldDir::Left;
-                        self->holdStartTick = nowMs();
-                        self->nextRepeatTick = self->holdStartTick + 180;
+                    lv_event_code_t code = lv_event_get_code(e);
+                    if (code == LV_EVENT_PRESSED) {
+                        if (!self->paused && !self->gameOver) {
+                            self->moveLeft();
+                            self->heldDir = HoldDir::Left;
+                            self->holdStartTick = nowMs();
+                            self->nextRepeatTick = self->holdStartTick + 180;
+                        }
+                    } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+                        if (self->heldDir == HoldDir::Left) self->heldDir = HoldDir::None;
                     }
-                } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
-                    if (self->heldDir == HoldDir::Left) self->heldDir = HoldDir::None;
-                }
-            });
+                });
 
-    // 3. Right Button (x = 180, y = 114, w = 56, h = 44)
-    makeBtn(parent, LV_SYMBOL_RIGHT, "", 180, 114, 56, 44,
-            lv_color_hex(0x1D39C4), lv_color_hex(0x2F54EB),
-            [](lv_event_t *e) {
-                auto self = static_cast<Tetris *>(lv_event_get_user_data(e));
-                lv_event_code_t code = lv_event_get_code(e);
-                if (code == LV_EVENT_PRESSED) {
-                    if (!self->paused && !self->gameOver) {
-                        self->moveRight();
-                        self->heldDir = HoldDir::Right;
-                        self->holdStartTick = nowMs();
-                        self->nextRepeatTick = self->holdStartTick + 180;
-                    }
-                } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
-                    if (self->heldDir == HoldDir::Right) self->heldDir = HoldDir::None;
-                }
-            });
-
-    // 4. Soft Drop Button (x = 120, y = 162, w = 56, h = 40)
-    makeBtn(parent, LV_SYMBOL_DOWN, "降", 120, 162, 56, 40,
-            lv_color_hex(0x006D75), lv_color_hex(0x13C2C2),
-            [](lv_event_t *e) {
-                auto self = static_cast<Tetris *>(lv_event_get_user_data(e));
-                lv_event_code_t code = lv_event_get_code(e);
-                if (code == LV_EVENT_PRESSED) {
-                    if (!self->paused && !self->gameOver) {
-                        self->score += 1;
-                        self->stepDrop();
-                        self->heldDir = HoldDir::Down;
-                        self->holdStartTick = nowMs();
-                        self->nextRepeatTick = self->holdStartTick + 150;
-                    }
-                } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
-                    if (self->heldDir == HoldDir::Down) self->heldDir = HoldDir::None;
-                }
-            });
-
-    // 5. Hard Drop Button (x = 180, y = 162, w = 56, h = 40)
-    makeBtn(parent, LV_SYMBOL_CHARGE, "落", 180, 162, 56, 40,
-            lv_color_hex(0xD4380D), lv_color_hex(0xFA541C),
-            [](lv_event_t *e) {
-                if (lv_event_get_code(e) == LV_EVENT_PRESSED) {
+    // 2. Move Right Button (x = 4, y = 140, w = 60, h = 96)
+    makeWingBtn(parent, LV_SYMBOL_RIGHT, "右移", 4, 140, 60, 96,
+                lv_color_hex(0x1D39C4), lv_color_hex(0x2F54EB),
+                [](lv_event_t *e) {
                     auto self = static_cast<Tetris *>(lv_event_get_user_data(e));
-                    if (!self->paused && !self->gameOver) self->hardDrop();
-                }
-            });
+                    lv_event_code_t code = lv_event_get_code(e);
+                    if (code == LV_EVENT_PRESSED) {
+                        if (!self->paused && !self->gameOver) {
+                            self->moveRight();
+                            self->heldDir = HoldDir::Right;
+                            self->holdStartTick = nowMs();
+                            self->nextRepeatTick = self->holdStartTick + 180;
+                        }
+                    } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+                        if (self->heldDir == HoldDir::Right) self->heldDir = HoldDir::None;
+                    }
+                });
 
-    // 6. Pause / Menu Button (x = 120, y = 206, w = 116, h = 26)
-    makeBtn(parent, LV_SYMBOL_PAUSE, "暂停", 120, 206, 116, 26,
-            lv_color_hex(0x262626), lv_color_hex(0x434343),
-            [](lv_event_t *e) {
-                if (lv_event_get_code(e) == LV_EVENT_CLICKED || lv_event_get_code(e) == LV_EVENT_PRESSED) {
+    // --- Right Wing: Right Thumb Area ---
+    // 3. Rotate Button (x = 176, y = 38, w = 60, h = 96)
+    makeWingBtn(parent, LV_SYMBOL_REFRESH, "旋转", 176, 38, 60, 96,
+                lv_color_hex(0x722ED1), lv_color_hex(0x9254DE),
+                [](lv_event_t *e) {
+                    if (lv_event_get_code(e) == LV_EVENT_PRESSED) {
+                        auto self = static_cast<Tetris *>(lv_event_get_user_data(e));
+                        if (!self->paused && !self->gameOver) self->rotatePiece(1);
+                    }
+                });
+
+    // 4. Drop Button (x = 176, y = 140, w = 60, h = 96)
+    // Tap: Soft drop 1 step; Hold: Fast soft drop; Double-Tap: Instant Hard Drop!
+    makeWingBtn(parent, LV_SYMBOL_DOWN, "下落", 176, 140, 60, 96,
+                lv_color_hex(0x006D75), lv_color_hex(0x13C2C2),
+                [](lv_event_t *e) {
                     auto self = static_cast<Tetris *>(lv_event_get_user_data(e));
-                    self->showMenu(false);
-                }
-            });
+                    lv_event_code_t code = lv_event_get_code(e);
+                    if (code == LV_EVENT_PRESSED) {
+                        if (!self->paused && !self->gameOver) {
+                            uint32_t now = nowMs();
+                            if (now - self->lastDropBtnTick < 280) {
+                                // Fast double-tap -> Hard Drop!
+                                self->hardDrop();
+                                self->lastDropBtnTick = 0;
+                                self->heldDir = HoldDir::None;
+                            } else {
+                                self->lastDropBtnTick = now;
+                                self->score += 1;
+                                self->stepDrop();
+                                self->heldDir = HoldDir::Down;
+                                self->holdStartTick = now;
+                                self->nextRepeatTick = now + 150;
+                            }
+                        }
+                    } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+                        if (self->heldDir == HoldDir::Down) self->heldDir = HoldDir::None;
+                    }
+                });
 }
 
 void Tetris::createMenuOverlay(lv_obj_t *parent) {
@@ -758,11 +781,13 @@ void Tetris::drawBlock(uint16_t *buf, int stride, int bx, int by, PieceType type
     int py = by * CellSize;
 
     if (ghost) {
-        // Hollow outline for ghost piece
+        // Subtle dotted/dashed outline for ghost projection (虚线向导投影)
+        uint16_t color = pal.dark;
         for (int y = 0; y < CellSize - 1; ++y) {
             for (int x = 0; x < CellSize - 1; ++x) {
-                if (x == 0 || x == CellSize - 2 || y == 0 || y == CellSize - 2) {
-                    buf[(py + y) * stride + (px + x)] = pal.base;
+                bool isBorder = (x == 0 || x == CellSize - 2 || y == 0 || y == CellSize - 2);
+                if (isBorder && ((x + y) % 2 == 0)) {
+                    buf[(py + y) * stride + (px + x)] = color;
                 }
             }
         }
@@ -819,7 +844,7 @@ void Tetris::renderBoard() {
         }
     }
 
-    // Draw ghost piece
+    // Draw ghost piece (dashed bottom guide)
     if (currentPiece.type != PieceType::None && clearingRows.empty()) {
         int ghostY = calculateGhostY();
         int typeIdx = static_cast<int>(currentPiece.type) - 1;
@@ -851,7 +876,6 @@ void Tetris::renderPreview() {
     if (nextPiece == PieceType::None) return;
 
     int typeIdx = static_cast<int>(nextPiece) - 1;
-    // Calculate bounding box to center piece inside 44x44
     int minX = 4, maxX = 0, minY = 4, maxY = 0;
     for (int i = 0; i < 4; ++i) {
         int x = kShapes[typeIdx][0][i].x;
@@ -861,22 +885,25 @@ void Tetris::renderPreview() {
         minY = std::min(minY, y);
         maxY = std::max(maxY, y);
     }
-    int pw = (maxX - minX + 1) * CellSize;
-    int ph = (maxY - minY + 1) * CellSize;
-    int offsetX = (PreviewW - pw) / 2 - minX * CellSize;
-    int offsetY = (PreviewH - ph) / 2 - minY * CellSize;
+    constexpr int pCell = 6;
+    int pw = (maxX - minX + 1) * pCell;
+    int ph = (maxY - minY + 1) * pCell;
+    int offsetX = (PreviewW - pw) / 2 - minX * pCell;
+    int offsetY = (PreviewH - ph) / 2 - minY * pCell;
 
     const auto &pal = kPalettes[static_cast<size_t>(nextPiece)];
     for (int i = 0; i < 4; ++i) {
-        int bx = kShapes[typeIdx][0][i].x * CellSize + offsetX;
-        int by = kShapes[typeIdx][0][i].y * CellSize + offsetY;
+        int bx = kShapes[typeIdx][0][i].x * pCell + offsetX;
+        int by = kShapes[typeIdx][0][i].y * pCell + offsetY;
 
-        for (int y = 0; y < CellSize - 1; ++y) {
-            for (int x = 0; x < CellSize - 1; ++x) {
+        for (int y = 0; y < pCell - 1; ++y) {
+            for (int x = 0; x < pCell - 1; ++x) {
                 uint16_t color = pal.base;
                 if (y == 0 || x == 0) color = pal.light;
-                else if (y == CellSize - 2 || x == CellSize - 2) color = pal.dark;
-                previewPixels[(by + y) * PreviewW + (bx + x)] = color;
+                else if (y == pCell - 2 || x == pCell - 2) color = pal.dark;
+                if (by + y >= 0 && by + y < PreviewH && bx + x >= 0 && bx + x < PreviewW) {
+                    previewPixels[(by + y) * PreviewW + (bx + x)] = color;
+                }
             }
         }
     }

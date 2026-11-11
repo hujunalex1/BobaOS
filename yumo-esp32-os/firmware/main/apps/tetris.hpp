@@ -28,11 +28,11 @@ public:
 private:
     static constexpr int BoardCols = 10;
     static constexpr int BoardRows = 20;
-    static constexpr int CellSize = 11;
-    static constexpr int BoardW = BoardCols * CellSize; // 110 px
-    static constexpr int BoardH = BoardRows * CellSize; // 220 px
-    static constexpr int PreviewW = 44;
-    static constexpr int PreviewH = 44;
+    static constexpr int CellSize = 10;
+    static constexpr int BoardW = BoardCols * CellSize; // 100 px
+    static constexpr int BoardH = BoardRows * CellSize; // 200 px
+    static constexpr int PreviewW = 32;
+    static constexpr int PreviewH = 32;
 
     enum class PieceType : uint8_t { None = 0, I = 1, J = 2, L = 3, O = 4, S = 5, T = 6, Z = 7 };
 
@@ -134,6 +134,7 @@ private:
     HoldDir heldDir{HoldDir::None};
     uint32_t holdStartTick{0};
     uint32_t nextRepeatTick{0};
+    uint32_t lastDropBtnTick{0};
 
     std::shared_ptr<core::game_audio::Session> audio;
 };
