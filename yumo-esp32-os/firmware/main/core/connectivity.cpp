@@ -433,6 +433,16 @@ esp_err_t Connectivity::init() {
     }
     if(err==ESP_OK) err=esp_wifi_set_storage(WIFI_STORAGE_RAM);
     if(err==ESP_OK) err=esp_wifi_set_mode(WIFI_MODE_STA);
+    if(err==ESP_OK) {
+        const wifi_country_t country{
+            .cc="CN",
+            .schan=1,
+            .nchan=13,
+            .max_tx_power=20,
+            .policy=WIFI_COUNTRY_POLICY_AUTO
+        };
+        (void)esp_wifi_set_country(&country);
+    }
     if(err==ESP_OK) err=esp_event_handler_instance_register(WIFI_EVENT,ESP_EVENT_ANY_ID,radioEvent,nullptr,&wifiHandler);
     if(err==ESP_OK) err=esp_event_handler_instance_register(IP_EVENT,ESP_EVENT_ANY_ID,radioEvent,nullptr,&ipHandler);
     if(err!=ESP_OK) {
@@ -539,7 +549,10 @@ esp_err_t Connectivity::startScan() {
     if(state.scan==WifiScanState::Scanning) return ESP_OK;
     if(scanOutstanding || awaitingStop) return ESP_ERR_INVALID_STATE;
     (void)esp_wifi_clear_ap_list();
-    wifi_scan_config_t config{}; config.show_hidden=false;
+    wifi_scan_config_t config{};
+    config.show_hidden=false;
+    config.scan_time.active.min=kActiveScanMinMs;
+    config.scan_time.active.max=kActiveScanMaxMs;
     auto err=esp_wifi_scan_start(&config,false);
     scanOutstanding=err==ESP_OK;
     state.scan=err==ESP_OK?WifiScanState::Scanning:WifiScanState::Failed;

@@ -35,7 +35,7 @@ struct HotspotUplink {
 // requests and immutable, mutex-protected snapshots/results.
 class Connectivity {
 public:
-    static constexpr uint16_t kMaxNetworks = 24;
+    static constexpr uint16_t kMaxNetworks = 40;
     // Keep an enabled STA driver for AP+STA; otherwise hand off to AP-only.
     static constexpr esp_err_t HotspotBusy=0x10002;
     static constexpr esp_err_t NetworkNotSeen=0x10003; // presence scans, distinct from driver association failure
