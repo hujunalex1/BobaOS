@@ -450,7 +450,7 @@ void Tetris::createMenuOverlay(lv_obj_t *parent) {
     lv_obj_set_style_border_width(card, 2, 0);
     lv_obj_set_style_border_color(card, lv_color_hex(0x722ED1), 0);
 
-    menuTitle = c::label(card, "俄罗斯方块", 180);
+    menuTitle = c::label(card, "叠方块", 180);
     lv_obj_align(menuTitle, LV_ALIGN_TOP_MID, 0, 10);
     lv_obj_set_style_text_align(menuTitle, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(menuTitle, t::fontSmall(), 0);
@@ -517,7 +517,7 @@ void Tetris::showMenu(bool isGameOver) {
         c::setText(lv_obj_get_child(menuResumeBtn, 0), "再来一局");
         soundEffect(core::game_audio::Lost);
     } else {
-        c::setText(menuTitle, running ? "游戏暂停" : "俄罗斯方块");
+        c::setText(menuTitle, running ? "游戏暂停" : "叠方块");
         c::setText(lv_obj_get_child(menuResumeBtn, 0), running ? "继续游戏" : "开始游戏");
     }
 

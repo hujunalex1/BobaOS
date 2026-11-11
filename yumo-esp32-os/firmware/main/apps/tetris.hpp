@@ -11,7 +11,7 @@ namespace apps {
 
 class Tetris : public ui::App {
 public:
-    const char *name() const override { return "俄罗斯方块"; }
+    const char *name() const override { return "叠方块"; }
     const char *icon() const override { return ui::icons::Patterns; }
     bool handlesHorizontalGesture() const override { return !paused; }
     bool allowsQuickPanel() const override { return paused; }
