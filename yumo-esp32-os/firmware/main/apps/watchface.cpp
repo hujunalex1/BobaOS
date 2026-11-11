@@ -174,13 +174,28 @@ void Watchface::onCreate(lv_obj_t *parent)
     refresh();
 }
 
-void Watchface::onShow() { m_visible=true;if(m_timer) lv_timer_resume(m_timer);m_lastRendered=static_cast<time_t>(-1);refresh(); }
-void Watchface::onPowerSaving(bool enabled) {
-    m_powerSaving=enabled;
-    if(m_timer)lv_timer_set_period(m_timer,enabled?1000:200);
-    if(enabled) { m_almanac.stop(); m_flip.stop(); m_cute.stop(); }
+void Watchface::onShow() {
+    m_visible = true;
+    if (m_face == 3) m_almanac.show(m_faceArea);
+    else if (m_face == 4) m_flip.show(m_faceArea);
+    else if (m_face == 5) m_cute.show(m_faceArea);
+    if (m_timer) lv_timer_resume(m_timer);
+    m_lastRendered = static_cast<time_t>(-1);
+    refresh();
 }
-void Watchface::onHide() { m_visible=false;m_tracking=false;m_almanac.stop();m_flip.stop();m_cute.stop();if(m_timer) lv_timer_pause(m_timer); }
+void Watchface::onPowerSaving(bool enabled) {
+    m_powerSaving = enabled;
+    if (m_timer) lv_timer_set_period(m_timer, enabled ? 1000 : 200);
+    if (enabled) { m_almanac.stop(); m_flip.stop(); m_cute.stop(); }
+}
+void Watchface::onHide() {
+    m_visible = false;
+    m_tracking = false;
+    m_almanac.stop();
+    m_flip.stop();
+    m_cute.stop();
+    if (m_timer) lv_timer_pause(m_timer);
+}
 
 void Watchface::onDestroy(void)
 {
@@ -196,8 +211,13 @@ void Watchface::onDestroy(void)
 void Watchface::tickCb(lv_timer_t *t)
 {
     Watchface *self = static_cast<Watchface *>(lv_timer_get_user_data(t));
-    if(!sys::Power::isScreenOn()) {self->m_almanac.stop();return;} // no hidden redraws
-    if(!self->m_visible) return;
+    if (!sys::Power::isScreenOn()) {
+        self->m_almanac.stop();
+        self->m_flip.stop();
+        self->m_cute.stop();
+        return;
+    } // no hidden redraws
+    if (!self->m_visible) return;
     self->refresh();
 }
 

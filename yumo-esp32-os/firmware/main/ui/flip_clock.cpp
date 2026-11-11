@@ -160,7 +160,7 @@ void FlipClock::hide() {
 }
 
 void FlipClock::stop() {
-    hide();
+    // Keep area visible; stop any dynamic animation/timer if active.
 }
 
 void FlipClock::refresh(const tm &time, bool animated) {

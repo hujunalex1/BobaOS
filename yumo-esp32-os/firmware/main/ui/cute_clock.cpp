@@ -240,7 +240,14 @@ void CuteClock::hide() {
 }
 
 void CuteClock::stop() {
-    hide();
+    // Keep area visible; restore eye blink state
+    if (eyeBlinked && leftEye && rightEye) {
+        lv_obj_set_size(leftEye, 6, 8);
+        lv_obj_set_size(rightEye, 6, 8);
+        lv_obj_set_style_radius(leftEye, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_radius(rightEye, LV_RADIUS_CIRCLE, 0);
+        eyeBlinked = false;
+    }
 }
 
 void CuteClock::refresh(const tm &time, bool animated) {
