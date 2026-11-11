@@ -44,6 +44,7 @@ private:
     // Token View widgets
     lv_obj_t *m_lblTodayToken{nullptr};
     lv_obj_t *m_lblTodayCost{nullptr};
+    lv_obj_t *m_lblMonthTok{nullptr};
     lv_obj_t *m_lblPromptTok{nullptr};
     lv_obj_t *m_lblComplTok{nullptr};
     lv_obj_t *m_lblCacheHit{nullptr};

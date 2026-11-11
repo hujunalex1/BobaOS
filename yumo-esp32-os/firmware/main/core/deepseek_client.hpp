@@ -11,6 +11,7 @@ struct DeepSeekData {
     bool valid{false};
     bool isAvailable{true};
     bool usingPlatformToken{false};
+    bool hasTokenStats{false};
 
     // Balance
     double totalBalance{0.0};
@@ -27,6 +28,8 @@ struct DeepSeekData {
     double cacheHitRate{0.0};
     double todayCost{0.0};
 
+    int lastApiStatus{0};
+    int lastPlatformStatus{0};
     time_t lastUpdated{0};
     std::string errorMsg;
 };

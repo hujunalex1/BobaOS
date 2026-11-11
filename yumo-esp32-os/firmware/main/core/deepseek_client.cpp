@@ -15,6 +15,7 @@
 #include <vector>
 #include <string>
 #include <algorithm>
+#include <sys/time.h>
 
 namespace core {
 
@@ -56,6 +57,13 @@ static std::string findFormKey(const std::string &body, const std::string &key) 
 static void cleanTokenString(std::string &s) {
     while (!s.empty() && (s.back() == '\r' || s.back() == '\n' || s.back() == ' ' || s.back() == '\t')) s.pop_back();
     while (!s.empty() && (s.front() == '\r' || s.front() == '\n' || s.front() == ' ' || s.front() == '\t')) s.erase(s.begin());
+    if (s.rfind("userToken:", 0) == 0 || s.rfind("userToken :", 0) == 0 || s.rfind("userToken=", 0) == 0) {
+        size_t colon = s.find(':');
+        if (colon == std::string::npos) colon = s.find('=');
+        s = s.substr(colon + 1);
+        while (!s.empty() && (s.front() == ' ' || s.front() == '"' || s.front() == '\'')) s.erase(s.begin());
+        while (!s.empty() && (s.back() == ' ' || s.back() == '"' || s.back() == '\'')) s.pop_back();
+    }
     if (s.size() >= 2 && ((s.front() == '"' && s.back() == '"') || (s.front() == '\'' && s.back() == '\''))) {
         s = s.substr(1, s.size() - 2);
     }
@@ -63,6 +71,7 @@ static void cleanTokenString(std::string &s) {
         s = s.substr(7);
     }
     while (!s.empty() && (s.front() == ' ')) s.erase(s.begin());
+    while (!s.empty() && (s.back() == ' ')) s.pop_back();
 }
 
 static double getJsonNumber(cJSON *item, double defVal = 0.0) {
@@ -87,24 +96,78 @@ static int64_t getJsonInt64(cJSON *item, int64_t defVal = 0) {
     return defVal;
 }
 
+static int64_t findJsonInt(cJSON *obj, const std::initializer_list<const char*> &keys) {
+    if (!obj) return 0;
+    for (const char *k : keys) {
+        cJSON *item = cJSON_GetObjectItem(obj, k);
+        if (item) return getJsonInt64(item);
+    }
+    return 0;
+}
+
+// Synchronize system clock from HTTP response Date header
+static void syncTimeFromHttpDate(const char *dateStr) {
+    if (!dateStr || !*dateStr) return;
+    const char *p = std::strchr(dateStr, ',');
+    if (p) dateStr = p + 1;
+    while (*dateStr == ' ') dateStr++;
+
+    int day = 0, year = 0, hour = 0, min = 0, sec = 0;
+    char monthStr[8] = {0};
+    if (std::sscanf(dateStr, "%d %3s %d %d:%d:%d", &day, monthStr, &year, &hour, &min, &sec) == 6) {
+        static const char *months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+        int month = -1;
+        for (int i = 0; i < 12; ++i) {
+            if (std::strncmp(monthStr, months[i], 3) == 0) {
+                month = i;
+                break;
+            }
+        }
+        if (month >= 0 && year >= 2024) {
+            struct tm tm{};
+            tm.tm_year = year - 1900;
+            tm.tm_mon = month;
+            tm.tm_mday = day;
+            tm.tm_hour = hour;
+            tm.tm_min = min;
+            tm.tm_sec = sec;
+            tm.tm_isdst = 0;
+            time_t t = mktime(&tm);
+            if (t > 1700000000) {
+                struct timeval tv = { .tv_sec = t, .tv_usec = 0 };
+                settimeofday(&tv, nullptr);
+                ESP_LOGI(TAG, "Synced system clock from HTTP Date: %04d-%02d-%02d %02d:%02d:%02d",
+                         year, month + 1, day, hour, min, sec);
+            }
+        }
+    }
+}
+
 static esp_err_t dsGetHandler(httpd_req_t *req) {
     auto &client = DeepSeekClient::instance();
     auto curData = client.getData();
     std::string curU = client.getUserToken();
     std::string curA = client.getApiKey();
 
-    char statusInfo[256];
+    char statusInfo[512];
     if (curData.valid) {
         std::snprintf(statusInfo, sizeof(statusInfo),
             "<div style='background:#064e3b;color:#6ee7b7;padding:12px;border-radius:8px;margin-bottom:14px;font-size:13px;line-height:1.6'>"
-            "<b>✓ 已同步成功</b><br>可用余额: ¥ %.2f (本金 ¥%.2f / 赠送 ¥%.2f)<br>今日Token: %lld | 本月Token: %lld</div>",
+            "<b>✓ 已同步成功</b><br>"
+            "可用余额: ¥ %.2f (本金 ¥%.2f / 赠送 ¥%.2f)<br>"
+            "今日用量: %lld Token | 本月用量: %lld Token<br>"
+            "<small style='color:#a7f3d0'>状态: API(HTTP %d) / 平台(HTTP %d) %s</small>"
+            "</div>",
             curData.totalBalance, curData.toppedUpBalance, curData.grantedBalance,
-            (long long)curData.todayTokens, (long long)curData.monthTokens);
+            (long long)curData.todayTokens, (long long)curData.monthTokens,
+            curData.lastApiStatus, curData.lastPlatformStatus,
+            curData.hasTokenStats ? "[含用量数据]" : "[仅余额，无用量]");
     } else if (!curU.empty() || !curA.empty()) {
         std::snprintf(statusInfo, sizeof(statusInfo),
             "<div style='background:#7f1d1d;color:#fca5a5;padding:12px;border-radius:8px;margin-bottom:14px;font-size:13px;line-height:1.6'>"
-            "<b>⚠ 同步中或遇到异常</b><br>状态: %s</div>",
-            curData.errorMsg.empty() ? "拉取中，请稍后刷新页面..." : curData.errorMsg.c_str());
+            "<b>⚠ 同步中或遇到异常</b><br>API: HTTP %d | 平台: HTTP %d<br>%s</div>",
+            curData.lastApiStatus, curData.lastPlatformStatus,
+            curData.errorMsg.empty() ? "正在拉取中，请稍后刷新页面..." : curData.errorMsg.c_str());
     } else {
         std::snprintf(statusInfo, sizeof(statusInfo),
             "<div style='background:#1e293b;color:#94a3b8;padding:12px;border-radius:8px;margin-bottom:14px;font-size:13px'>"
@@ -112,7 +175,7 @@ static esp_err_t dsGetHandler(httpd_req_t *req) {
     }
 
     std::string html;
-    html.reserve(3072);
+    html.reserve(3584);
     html += "<!DOCTYPE html><html><head><meta charset='utf-8'>"
             "<meta name='viewport' content='width=device-width, initial-scale=1'>"
             "<title>DeepSeek 凭据配置 - CubePaw</title>"
@@ -131,11 +194,11 @@ static esp_err_t dsGetHandler(httpd_req_t *req) {
     html += statusInfo;
 
     html += "<form method='POST' action='/ds'>"
-            "<label>1. 平台 userToken (推荐，含Token真实统计):</label>"
+            "<label>1. 平台 userToken (获取真实 Token 用量统计):</label>"
             "<textarea name='userToken' rows='4' placeholder='在 platform.deepseek.com 登录后按 F12 -> Local Storage 复制 userToken'>";
     html += curU;
     html += "</textarea>"
-            "<label>2. API Key (备用，sk-...，用于官方余额接口):</label>"
+            "<label>2. API Key (获取官方余额，sk-...):</label>"
             "<input name='apiKey' placeholder='sk-...' value='";
     html += curA;
     html += "'>"
@@ -145,8 +208,8 @@ static esp_err_t dsGetHandler(httpd_req_t *req) {
             "<a href='/ds' class='btn-sub'>🔄 刷新测试状态</a>"
             "</div>"
             "<div class='tip'><b>💡 获取指南：</b><br>"
-            "• <b>Token 统计</b>：在电脑登录 <span style='color:#38bdf8'>platform.deepseek.com</span>，按 F12 打开开发者工具，在 Application (应用程序) -> Local Storage 中找到 <code>userToken</code> 完整值复制到上方。<br>"
-            "• <b>官方余额</b>：在 DeepSeek 控制台创建 <code>sk-...</code> 填入 API Key 即可。</div>"
+            "• <b>官方余额</b>：在控制台创建 <code>sk-...</code> 即可立即显示真实金额。<br>"
+            "• <b>Token 统计</b>：在电脑登录 <span style='color:#38bdf8'>platform.deepseek.com</span>，按 F12 打开开发者工具，在 Application (应用程序) -> Local Storage 中找到 <code>userToken</code> 完整值复制到上方。</div>"
             "</div></body></html>";
 
     httpd_resp_set_type(req, "text/html; charset=utf-8");
@@ -345,7 +408,11 @@ struct HttpRespContext {
 };
 
 static esp_err_t httpEventHandler(esp_http_client_event_t *evt) {
-    if (evt->event_id == HTTP_EVENT_ON_DATA) {
+    if (evt->event_id == HTTP_EVENT_ON_HEADER) {
+        if (evt->header_key && strcasecmp(evt->header_key, "Date") == 0 && evt->header_value) {
+            syncTimeFromHttpDate(evt->header_value);
+        }
+    } else if (evt->event_id == HTTP_EVENT_ON_DATA) {
         auto *ctx = static_cast<HttpRespContext *>(evt->user_data);
         if (ctx && ctx->body && evt->data && evt->data_len > 0) {
             ctx->body->append(static_cast<char *>(evt->data), evt->data_len);
@@ -422,7 +489,7 @@ bool DeepSeekClient::performFetch() {
         std::string balanceResp;
         int status = 0;
         bool ok = httpGet("https://api.deepseek.com/user/balance", aKey, false, balanceResp, status);
-        ESP_LOGI(TAG, "api.deepseek.com balance: status=%d, bodyLen=%d", status, (int)balanceResp.size());
+        result.lastApiStatus = status;
 
         if (ok && !balanceResp.empty()) {
             cJSON *root = cJSON_Parse(balanceResp.c_str());
@@ -457,7 +524,7 @@ bool DeepSeekClient::performFetch() {
         std::string summaryResp;
         int status = 0;
         bool ok = httpGet("https://platform.deepseek.com/api/v0/users/get_user_summary", uToken, true, summaryResp, status);
-        ESP_LOGI(TAG, "platform get_user_summary: status=%d, bodyLen=%d", status, (int)summaryResp.size());
+        result.lastPlatformStatus = status;
 
         if (ok && !summaryResp.empty()) {
             cJSON *root = cJSON_Parse(summaryResp.c_str());
@@ -483,74 +550,82 @@ bool DeepSeekClient::performFetch() {
             }
         }
 
-        // Query usage amount
+        // Prepare month string
         time_t now = std::time(nullptr);
         struct tm tmInfo;
         localtime_r(&now, &tmInfo);
-        char monthBuf[32];
-        int yr = std::max(2020, std::min(2099, tmInfo.tm_year + 1900));
-        int mo = std::max(1, std::min(12, tmInfo.tm_mon + 1));
-        std::snprintf(monthBuf, sizeof(monthBuf), "%04d-%02d", yr, mo);
+        char monthBuf[32] = {0};
+        if (tmInfo.tm_year + 1900 >= 2024) {
+            std::snprintf(monthBuf, sizeof(monthBuf), "%04d-%02d", tmInfo.tm_year + 1900, tmInfo.tm_mon + 1);
+        }
 
-        std::string usageUrl = std::string("https://platform.deepseek.com/api/v0/usage/amount?month=") + monthBuf;
-        std::string usageResp;
-        ok = httpGet(usageUrl, uToken, true, usageResp, status);
-        ESP_LOGI(TAG, "platform usage/amount: status=%d, bodyLen=%d", status, (int)usageResp.size());
+        std::vector<std::string> candidateUrls;
+        if (monthBuf[0]) {
+            candidateUrls.push_back(std::string("https://platform.deepseek.com/api/v0/usage/amount?month=") + monthBuf);
+            candidateUrls.push_back(std::string("https://platform.deepseek.com/api/v0/usage/by_api_key/amount?month=") + monthBuf);
+        }
+        candidateUrls.push_back("https://platform.deepseek.com/api/v0/usage/amount");
+        candidateUrls.push_back("https://platform.deepseek.com/api/v0/usage/by_api_key/amount");
 
-        if (ok && !usageResp.empty()) {
-            cJSON *root = cJSON_Parse(usageResp.c_str());
-            if (root) {
-                cJSON *data = cJSON_GetObjectItem(root, "data");
-                cJSON *list = nullptr;
-                if (data) {
-                    if (cJSON_IsArray(data)) list = data;
-                    else {
-                        list = cJSON_GetObjectItem(data, "usage_list");
-                        if (!list) list = cJSON_GetObjectItem(data, "list");
-                        if (!list) list = cJSON_GetObjectItem(data, "usages");
-                    }
-                }
-                if (list && cJSON_IsArray(list)) {
-                    int size = cJSON_GetArraySize(list);
-                    int64_t mTokens = 0, pTokens = 0, cTokens = 0, hTokens = 0;
-                    int64_t todayTok = 0;
+        for (const auto &usageUrl : candidateUrls) {
+            std::string usageResp;
+            int uStatus = 0;
+            bool uOk = httpGet(usageUrl, uToken, true, usageResp, uStatus);
+            if (result.lastPlatformStatus == 0) result.lastPlatformStatus = uStatus;
 
-                    for (int i = 0; i < size; ++i) {
-                        cJSON *item = cJSON_GetArrayItem(list, i);
-                        if (!item) continue;
-                        cJSON *tok = cJSON_GetObjectItem(item, "total_tokens");
-                        cJSON *ptok = cJSON_GetObjectItem(item, "prompt_tokens");
-                        cJSON *ctok = cJSON_GetObjectItem(item, "completion_tokens");
-                        cJSON *htok = cJSON_GetObjectItem(item, "prompt_cache_hit_tokens");
-
-                        int64_t t = getJsonInt64(tok);
-                        int64_t p = getJsonInt64(ptok);
-                        int64_t c = getJsonInt64(ctok);
-                        int64_t h = getJsonInt64(htok);
-
-                        mTokens += t;
-                        pTokens += p;
-                        cTokens += c;
-                        hTokens += h;
-
-                        if (i == size - 1) {
-                            todayTok = t;
+            if (uOk && !usageResp.empty()) {
+                cJSON *root = cJSON_Parse(usageResp.c_str());
+                if (root) {
+                    cJSON *data = cJSON_GetObjectItem(root, "data");
+                    cJSON *list = nullptr;
+                    if (data) {
+                        if (cJSON_IsArray(data)) list = data;
+                        else {
+                            list = cJSON_GetObjectItem(data, "usage_list");
+                            if (!list) list = cJSON_GetObjectItem(data, "list");
+                            if (!list) list = cJSON_GetObjectItem(data, "usages");
                         }
                     }
+                    if (list && cJSON_IsArray(list) && cJSON_GetArraySize(list) > 0) {
+                        int size = cJSON_GetArraySize(list);
+                        int64_t mTokens = 0, pTokens = 0, cTokens = 0, hTokens = 0;
+                        int64_t todayTok = 0;
 
-                    result.monthTokens = mTokens;
-                    result.todayTokens = todayTok;
-                    result.promptTokens = pTokens;
-                    result.completionTokens = cTokens;
-                    result.cacheHitTokens = hTokens;
-                    if (pTokens > 0) {
-                        result.cacheHitRate = static_cast<double>(hTokens) / static_cast<double>(pTokens) * 100.0;
+                        for (int i = 0; i < size; ++i) {
+                            cJSON *item = cJSON_GetArrayItem(list, i);
+                            if (!item) continue;
+                            int64_t t = findJsonInt(item, {"total_tokens", "tokens", "total_token"});
+                            int64_t p = findJsonInt(item, {"prompt_tokens", "input_tokens", "prompt_token"});
+                            int64_t c = findJsonInt(item, {"completion_tokens", "output_tokens", "completion_token"});
+                            int64_t h = findJsonInt(item, {"prompt_cache_hit_tokens", "cache_hit_tokens"});
+
+                            mTokens += t;
+                            pTokens += p;
+                            cTokens += c;
+                            hTokens += h;
+
+                            if (i == size - 1) {
+                                todayTok = t;
+                            }
+                        }
+
+                        result.monthTokens = mTokens;
+                        result.todayTokens = todayTok;
+                        result.promptTokens = pTokens;
+                        result.completionTokens = cTokens;
+                        result.cacheHitTokens = hTokens;
+                        if (pTokens > 0) {
+                            result.cacheHitRate = static_cast<double>(hTokens) / static_cast<double>(pTokens) * 100.0;
+                        }
+                        result.todayCost = (result.todayTokens / 1000000.0) * 1.5;
+                        result.hasTokenStats = true;
+                        result.valid = true;
+                        anySuccess = true;
+                        cJSON_Delete(root);
+                        break; // Successfully got usage data!
                     }
-                    result.todayCost = (result.todayTokens / 1000000.0) * 1.5;
-                    result.valid = true;
-                    anySuccess = true;
+                    cJSON_Delete(root);
                 }
-                cJSON_Delete(root);
             }
         }
     }
