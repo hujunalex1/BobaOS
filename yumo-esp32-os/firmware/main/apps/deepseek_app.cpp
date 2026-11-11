@@ -59,15 +59,17 @@ void DeepSeekApp::createUi(lv_obj_t *parent) {
     lv_obj_set_style_text_font(iconLbl, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(iconLbl, lv_color_hex(0xFFFFFF), 0);
 
-    auto brandLbl = c::label(headerBox, "DeepSeek", 65);
+    auto brandLbl = lv_label_create(headerBox);
+    lv_label_set_text(brandLbl, "DeepSeek");
     lv_obj_set_pos(brandLbl, 22, 3);
     lv_obj_set_style_text_font(brandLbl, t::fontSmall(), 0);
     lv_obj_set_style_text_color(brandLbl, lv_color_hex(0xFFFFFF), 0);
 
-    m_headerSub = c::label(headerBox, "· 用量", 50);
-    lv_obj_set_pos(m_headerSub, 88, 3);
+    m_headerSub = lv_label_create(headerBox);
+    lv_label_set_text(m_headerSub, "· 用量");
     lv_obj_set_style_text_font(m_headerSub, t::fontSmall(), 0);
     lv_obj_set_style_text_color(m_headerSub, lv_color_hex(0x60A5FA), 0);
+    lv_obj_align_to(m_headerSub, brandLbl, LV_ALIGN_OUT_RIGHT_MID, 4, 0);
 
     // Status Pill on top-right (w = 60, h = 20)
     m_statusPill = c::panel(headerBox, 60, 20);
@@ -103,6 +105,7 @@ void DeepSeekApp::createUi(lv_obj_t *parent) {
     lv_obj_set_style_pad_all(tokHero, 0, 0);
     lv_obj_set_style_radius(tokHero, 12, 0);
     lv_obj_set_style_bg_color(tokHero, lv_color_hex(0x13192B), 0);
+    lv_obj_set_style_bg_opa(tokHero, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(tokHero, 1, 0);
     lv_obj_set_style_border_color(tokHero, lv_color_hex(0x1E293B), 0);
     lv_obj_clear_flag(tokHero, LV_OBJ_FLAG_CLICKABLE);
@@ -112,18 +115,19 @@ void DeepSeekApp::createUi(lv_obj_t *parent) {
     lv_obj_set_style_text_font(lblTokTitle, t::fontSmall(), 0);
     lv_obj_set_style_text_color(lblTokTitle, lv_color_hex(0x94A3B8), 0);
 
-    m_lblTodayCost = c::label(tokHero, "约 ¥ 0.00", 98);
+    m_lblTodayCost = c::label(tokHero, "", 98);
     lv_obj_set_pos(m_lblTodayCost, 110, 8);
     lv_obj_set_style_text_align(m_lblTodayCost, LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_style_text_font(m_lblTodayCost, t::fontSmall(), 0);
     lv_obj_set_style_text_color(m_lblTodayCost, lv_color_hex(0xA5B4FC), 0);
 
-    m_lblTodayToken = c::label(tokHero, "0.00 M", 196);
+    m_lblTodayToken = lv_label_create(tokHero);
     lv_obj_set_pos(m_lblTodayToken, 12, 28);
     lv_obj_set_style_text_font(m_lblTodayToken, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(m_lblTodayToken, lv_color_hex(0xFFFFFF), 0);
+    lv_label_set_text(m_lblTodayToken, "");
 
-    m_lblMonthTok = c::label(tokHero, "本月累计: 0.0 M", 196);
+    m_lblMonthTok = c::label(tokHero, "", 196);
     lv_obj_set_pos(m_lblMonthTok, 12, 58);
     lv_obj_set_style_text_font(m_lblMonthTok, t::fontSmall(), 0);
     lv_obj_set_style_text_color(m_lblMonthTok, lv_color_hex(0x64748B), 0);
@@ -134,31 +138,34 @@ void DeepSeekApp::createUi(lv_obj_t *parent) {
     lv_obj_set_style_pad_all(tokDetail, 0, 0);
     lv_obj_set_style_radius(tokDetail, 12, 0);
     lv_obj_set_style_bg_color(tokDetail, lv_color_hex(0x101522), 0);
+    lv_obj_set_style_bg_opa(tokDetail, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(tokDetail, 1, 0);
     lv_obj_set_style_border_color(tokDetail, lv_color_hex(0x1E293B), 0);
     lv_obj_clear_flag(tokDetail, LV_OBJ_FLAG_CLICKABLE);
 
     // Left column: Prompt
-    auto lblPTitle = c::label(tokDetail, "输入 Prompt", 90);
+    auto lblPTitle = c::label(tokDetail, "输入 Token", 90);
     lv_obj_set_pos(lblPTitle, 12, 8);
     lv_obj_set_style_text_font(lblPTitle, t::fontSmall(), 0);
     lv_obj_set_style_text_color(lblPTitle, lv_color_hex(0x818CF8), 0);
 
-    m_lblPromptTok = c::label(tokDetail, "0 k", 90);
-    lv_obj_set_pos(m_lblPromptTok, 12, 28);
+    m_lblPromptTok = lv_label_create(tokDetail);
+    lv_obj_set_pos(m_lblPromptTok, 12, 30);
     lv_obj_set_style_text_font(m_lblPromptTok, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(m_lblPromptTok, lv_color_hex(0xF1F5F9), 0);
+    lv_label_set_text(m_lblPromptTok, "");
 
     // Right column: Completion
-    auto lblCTitle = c::label(tokDetail, "输出 Output", 90);
+    auto lblCTitle = c::label(tokDetail, "输出 Token", 90);
     lv_obj_set_pos(lblCTitle, 116, 8);
     lv_obj_set_style_text_font(lblCTitle, t::fontSmall(), 0);
     lv_obj_set_style_text_color(lblCTitle, lv_color_hex(0x34D399), 0);
 
-    m_lblComplTok = c::label(tokDetail, "0 k", 90);
-    lv_obj_set_pos(m_lblComplTok, 116, 28);
+    m_lblComplTok = lv_label_create(tokDetail);
+    lv_obj_set_pos(m_lblComplTok, 116, 30);
     lv_obj_set_style_text_font(m_lblComplTok, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(m_lblComplTok, lv_color_hex(0xF1F5F9), 0);
+    lv_label_set_text(m_lblComplTok, "");
 
     // Bottom row: Cache Hit
     auto cLabel = c::label(tokDetail, "缓存命中率", 90);
@@ -166,7 +173,7 @@ void DeepSeekApp::createUi(lv_obj_t *parent) {
     lv_obj_set_style_text_font(cLabel, t::fontSmall(), 0);
     lv_obj_set_style_text_color(cLabel, lv_color_hex(0x64748B), 0);
 
-    m_lblCacheHit = c::label(tokDetail, "0.0% Hit", 92);
+    m_lblCacheHit = c::label(tokDetail, "", 92);
     lv_obj_set_pos(m_lblCacheHit, 116, 56);
     lv_obj_set_style_text_align(m_lblCacheHit, LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_style_text_font(m_lblCacheHit, t::fontSmall(), 0);
@@ -303,12 +310,12 @@ void DeepSeekApp::createUi(lv_obj_t *parent) {
     lv_obj_set_style_bg_opa(footerBox, LV_OPA_TRANSP, 0);
     lv_obj_clear_flag(footerBox, LV_OBJ_FLAG_CLICKABLE);
 
-    m_lblFooterLeft = c::label(footerBox, "[1/2] 左右滑动切换", 120);
+    m_lblFooterLeft = c::label(footerBox, "[1/2] 滑动切换", 110);
     lv_obj_set_pos(m_lblFooterLeft, 0, 2);
     lv_obj_set_style_text_font(m_lblFooterLeft, t::fontSmall(), 0);
     lv_obj_set_style_text_color(m_lblFooterLeft, lv_color_hex(0x64748B), 0);
 
-    m_lblFooterRight = c::label(footerBox, "轻触刷新 ↻", 100);
+    m_lblFooterRight = c::label(footerBox, LV_SYMBOL_REFRESH " 刷新", 100);
     lv_obj_set_pos(m_lblFooterRight, 120, 2);
     lv_obj_set_style_text_align(m_lblFooterRight, LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_style_text_font(m_lblFooterRight, t::fontSmall(), 0);
@@ -321,13 +328,13 @@ void DeepSeekApp::switchView(int viewIdx) {
     lv_obj_set_hidden(m_viewBalance, m_currentView != 1);
 
     if (m_currentView == 0) {
-        c::setText(m_headerSub, "· 用量");
+        lv_label_set_text(m_headerSub, "· 用量");
         lv_obj_set_style_text_color(m_headerSub, lv_color_hex(0x60A5FA), 0);
-        c::setText(m_lblFooterLeft, "[1/2] 左右滑动切余额");
+        c::setText(m_lblFooterLeft, "[1/2] 滑动切余额");
     } else {
-        c::setText(m_headerSub, "· 余额");
+        lv_label_set_text(m_headerSub, "· 余额");
         lv_obj_set_style_text_color(m_headerSub, lv_color_hex(0x38BDF8), 0);
-        c::setText(m_lblFooterLeft, "[2/2] 左右滑动切用量");
+        c::setText(m_lblFooterLeft, "[2/2] 滑动切用量");
     }
 }
 

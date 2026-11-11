@@ -105,7 +105,6 @@ static int64_t findJsonInt(cJSON *obj, const std::initializer_list<const char*> 
     return 0;
 }
 
-// Synchronize system clock from HTTP response Date header
 static void syncTimeFromHttpDate(const char *dateStr) {
     if (!dateStr || !*dateStr) return;
     const char *p = std::strchr(dateStr, ',');
@@ -155,11 +154,11 @@ static esp_err_t dsGetHandler(httpd_req_t *req) {
             "<div style='background:#064e3b;color:#6ee7b7;padding:12px;border-radius:8px;margin-bottom:14px;font-size:13px;line-height:1.6'>"
             "<b>✓ 已同步成功</b><br>"
             "可用余额: ¥ %.2f (本金 ¥%.2f / 赠送 ¥%.2f)<br>"
-            "今日用量: %lld Token | 本月用量: %lld Token<br>"
-            "<small style='color:#a7f3d0'>状态: API(HTTP %d) / 平台(HTTP %d) %s</small>"
+            "今日用量: %lld Token | 费用: ¥ %.2f<br>"
+            "<small style='color:#a7f3d0'>状态: 官方API(HTTP %d) / 平台(HTTP %d) %s</small>"
             "</div>",
             curData.totalBalance, curData.toppedUpBalance, curData.grantedBalance,
-            (long long)curData.todayTokens, (long long)curData.monthTokens,
+            (long long)curData.todayTokens, curData.todayCost,
             curData.lastApiStatus, curData.lastPlatformStatus,
             curData.hasTokenStats ? "[含用量数据]" : "[仅余额，无用量]");
     } else if (!curU.empty() || !curA.empty()) {
@@ -194,7 +193,7 @@ static esp_err_t dsGetHandler(httpd_req_t *req) {
     html += statusInfo;
 
     html += "<form method='POST' action='/ds'>"
-            "<label>1. 平台 userToken (获取真实 Token 用量统计):</label>"
+            "<label>1. 平台 userToken (获取实时 Token 统计):</label>"
             "<textarea name='userToken' rows='4' placeholder='在 platform.deepseek.com 登录后按 F12 -> Local Storage 复制 userToken'>";
     html += curU;
     html += "</textarea>"
@@ -355,7 +354,6 @@ void DeepSeekClient::loadFromNvs() {
         nvs_close(handle);
     }
 
-    // Also check SD card file if exists (/sdcard/deepseek.txt or /sdcard/deepseek.json)
     FILE *f = std::fopen("/sdcard/deepseek.txt", "r");
     if (!f) f = std::fopen("/sdcard/deepseek.json", "r");
     if (f) {
@@ -484,7 +482,7 @@ bool DeepSeekClient::performFetch() {
     result.lastUpdated = std::time(nullptr);
     bool anySuccess = false;
 
-    // 1. If standard apiKey is provided, fetch official user balance first
+    // 1. If standard apiKey is provided, fetch official user balance
     if (!aKey.empty()) {
         std::string balanceResp;
         int status = 0;
@@ -519,7 +517,7 @@ bool DeepSeekClient::performFetch() {
         }
     }
 
-    // 2. If platform userToken is provided, fetch platform user summary & usage
+    // 2. If platform userToken is provided, fetch platform user summary, amount & cost
     if (!uToken.empty()) {
         std::string summaryResp;
         int status = 0;
@@ -550,83 +548,145 @@ bool DeepSeekClient::performFetch() {
             }
         }
 
-        // Prepare month string
+        // Calculate start and end timestamps in Beijing Time (GMT+8)
         time_t now = std::time(nullptr);
-        struct tm tmInfo;
-        localtime_r(&now, &tmInfo);
-        char monthBuf[32] = {0};
-        if (tmInfo.tm_year + 1900 >= 2024) {
-            std::snprintf(monthBuf, sizeof(monthBuf), "%04d-%02d", tmInfo.tm_year + 1900, tmInfo.tm_mon + 1);
+        if (now < 1700000000) {
+            now = 1794391200; // Fallback to current period Nov 2026 if RTC uninitialized
         }
 
-        std::vector<std::string> candidateUrls;
-        if (monthBuf[0]) {
-            candidateUrls.push_back(std::string("https://platform.deepseek.com/api/v0/usage/amount?month=") + monthBuf);
-            candidateUrls.push_back(std::string("https://platform.deepseek.com/api/v0/usage/by_api_key/amount?month=") + monthBuf);
-        }
-        candidateUrls.push_back("https://platform.deepseek.com/api/v0/usage/amount");
-        candidateUrls.push_back("https://platform.deepseek.com/api/v0/usage/by_api_key/amount");
+        const int64_t tzOffset = 28800; // GMT+8
+        // Start of today in Beijing (in UTC timestamp)
+        time_t todayStart = now - ((now + tzOffset) % 86400);
+        time_t todayEnd = todayStart + 86400;
 
-        for (const auto &usageUrl : candidateUrls) {
-            std::string usageResp;
-            int uStatus = 0;
-            bool uOk = httpGet(usageUrl, uToken, true, usageResp, uStatus);
-            if (result.lastPlatformStatus == 0) result.lastPlatformStatus = uStatus;
+        // Start of month in Beijing (in UTC timestamp)
+        time_t bjSeconds = now + tzOffset;
+        struct tm tmBj{};
+        gmtime_r(&bjSeconds, &tmBj);
+        int daysSinceMonthStart = (tmBj.tm_mday > 0) ? (tmBj.tm_mday - 1) : 0;
+        time_t monthStart = todayStart - ((int64_t)daysSinceMonthStart * 86400);
+        time_t monthEnd = todayEnd;
 
-            if (uOk && !usageResp.empty()) {
-                cJSON *root = cJSON_Parse(usageResp.c_str());
-                if (root) {
-                    cJSON *data = cJSON_GetObjectItem(root, "data");
-                    cJSON *list = nullptr;
-                    if (data) {
-                        if (cJSON_IsArray(data)) list = data;
-                        else {
-                            list = cJSON_GetObjectItem(data, "usage_list");
-                            if (!list) list = cJSON_GetObjectItem(data, "list");
-                            if (!list) list = cJSON_GetObjectItem(data, "usages");
-                        }
-                    }
-                    if (list && cJSON_IsArray(list) && cJSON_GetArraySize(list) > 0) {
-                        int size = cJSON_GetArraySize(list);
-                        int64_t mTokens = 0, pTokens = 0, cTokens = 0, hTokens = 0;
-                        int64_t todayTok = 0;
+        ESP_LOGI(TAG, "Time window GMT+8: todayStart=%lld, monthStart=%lld, now=%lld",
+                 (long long)todayStart, (long long)monthStart, (long long)now);
 
-                        for (int i = 0; i < size; ++i) {
-                            cJSON *item = cJSON_GetArrayItem(list, i);
-                            if (!item) continue;
-                            int64_t t = findJsonInt(item, {"total_tokens", "tokens", "total_token"});
-                            int64_t p = findJsonInt(item, {"prompt_tokens", "input_tokens", "prompt_token"});
-                            int64_t c = findJsonInt(item, {"completion_tokens", "output_tokens", "completion_token"});
-                            int64_t h = findJsonInt(item, {"prompt_cache_hit_tokens", "cache_hit_tokens"});
+        // Query by_api_key/amount with start, end, tz
+        char amountUrl[160];
+        std::snprintf(amountUrl, sizeof(amountUrl),
+            "https://platform.deepseek.com/api/v0/usage/by_api_key/amount?start=%lld&end=%lld&tz=28800",
+            (long long)monthStart, (long long)monthEnd);
 
-                            mTokens += t;
-                            pTokens += p;
-                            cTokens += c;
-                            hTokens += h;
+        std::string amountResp;
+        int aStatus = 0;
+        bool aOk = httpGet(amountUrl, uToken, true, amountResp, aStatus);
+        if (result.lastPlatformStatus == 0) result.lastPlatformStatus = aStatus;
 
-                            if (i == size - 1) {
-                                todayTok = t;
+        if (aOk && !amountResp.empty()) {
+            cJSON *root = cJSON_Parse(amountResp.c_str());
+            if (root) {
+                cJSON *data = cJSON_GetObjectItem(root, "data");
+                cJSON *series = data ? cJSON_GetObjectItem(data, "series") : cJSON_GetObjectItem(root, "series");
+                if (series && cJSON_IsArray(series)) {
+                    int sCount = cJSON_GetArraySize(series);
+                    int64_t tToday = 0, pToday = 0, cToday = 0, hToday = 0;
+                    int64_t tMonth = 0, pMonth = 0, cMonth = 0, hMonth = 0;
+
+                    for (int s = 0; s < sCount; ++s) {
+                        cJSON *sItem = cJSON_GetArrayItem(series, s);
+                        if (!sItem) continue;
+                        cJSON *buckets = cJSON_GetObjectItem(sItem, "buckets");
+                        if (buckets && cJSON_IsArray(buckets)) {
+                            int bCount = cJSON_GetArraySize(buckets);
+                            for (int b = 0; b < bCount; ++b) {
+                                cJSON *bItem = cJSON_GetArrayItem(buckets, b);
+                                if (!bItem) continue;
+                                int64_t bTime = findJsonInt(bItem, {"timestamp", "time", "date", "start_time", "begin_time"});
+                                if (bTime > 10000000000LL) {
+                                    bTime /= 1000; // Convert ms to seconds
+                                }
+                                int64_t tot = findJsonInt(bItem, {"total_tokens", "tokens", "total_token", "amount", "total"});
+                                int64_t pmt = findJsonInt(bItem, {"prompt_tokens", "input_tokens", "prompt_token", "input"});
+                                int64_t cpt = findJsonInt(bItem, {"completion_tokens", "output_tokens", "completion_token", "output"});
+                                int64_t hit = findJsonInt(bItem, {"prompt_cache_hit_tokens", "cache_hit_tokens", "prompt_cache_hit", "cache_hit"});
+
+                                tMonth += tot;
+                                pMonth += pmt;
+                                cMonth += cpt;
+                                hMonth += hit;
+
+                                if (bTime == 0 || bTime >= todayStart || bCount == 1) {
+                                    tToday += tot;
+                                    pToday += pmt;
+                                    cToday += cpt;
+                                    hToday += hit;
+                                }
                             }
                         }
-
-                        result.monthTokens = mTokens;
-                        result.todayTokens = todayTok;
-                        result.promptTokens = pTokens;
-                        result.completionTokens = cTokens;
-                        result.cacheHitTokens = hTokens;
-                        if (pTokens > 0) {
-                            result.cacheHitRate = static_cast<double>(hTokens) / static_cast<double>(pTokens) * 100.0;
-                        }
-                        result.todayCost = (result.todayTokens / 1000000.0) * 1.5;
-                        result.hasTokenStats = true;
-                        result.valid = true;
-                        anySuccess = true;
-                        cJSON_Delete(root);
-                        break; // Successfully got usage data!
                     }
-                    cJSON_Delete(root);
+
+                    result.monthTokens = tMonth;
+                    result.todayTokens = tToday;
+                    result.promptTokens = pToday;
+                    result.completionTokens = cToday;
+                    result.cacheHitTokens = hToday;
+                    if (pToday > 0) {
+                        result.cacheHitRate = static_cast<double>(hToday) / static_cast<double>(pToday) * 100.0;
+                    }
+                    result.hasTokenStats = true;
+                    result.valid = true;
+                    anySuccess = true;
+                    ESP_LOGI(TAG, "Parsed by_api_key/amount: todayTokens=%lld, monthTokens=%lld",
+                             (long long)tToday, (long long)tMonth);
                 }
+                cJSON_Delete(root);
             }
+        }
+
+        // Query by_api_key/cost for exact real money spent today
+        char costUrl[160];
+        std::snprintf(costUrl, sizeof(costUrl),
+            "https://platform.deepseek.com/api/v0/usage/by_api_key/cost?start=%lld&end=%lld&tz=28800",
+            (long long)todayStart, (long long)todayEnd);
+
+        std::string costResp;
+        int cStatus = 0;
+        bool cOk = httpGet(costUrl, uToken, true, costResp, cStatus);
+        if (cOk && !costResp.empty()) {
+            cJSON *root = cJSON_Parse(costResp.c_str());
+            if (root) {
+                cJSON *data = cJSON_GetObjectItem(root, "data");
+                cJSON *series = data ? cJSON_GetObjectItem(data, "series") : cJSON_GetObjectItem(root, "series");
+                if (series && cJSON_IsArray(series)) {
+                    int sCount = cJSON_GetArraySize(series);
+                    double costSum = 0.0;
+                    for (int s = 0; s < sCount; ++s) {
+                        cJSON *sItem = cJSON_GetArrayItem(series, s);
+                        if (!sItem) continue;
+                        cJSON *buckets = cJSON_GetObjectItem(sItem, "buckets");
+                        if (buckets && cJSON_IsArray(buckets)) {
+                            int bCount = cJSON_GetArraySize(buckets);
+                            for (int b = 0; b < bCount; ++b) {
+                                cJSON *bItem = cJSON_GetArrayItem(buckets, b);
+                                if (!bItem) continue;
+                                double cVal = getJsonNumber(cJSON_GetObjectItem(bItem, "cost"));
+                                if (cVal == 0.0) cVal = getJsonNumber(cJSON_GetObjectItem(bItem, "amount"));
+                                if (cVal == 0.0) cVal = getJsonNumber(cJSON_GetObjectItem(bItem, "total_cost"));
+                                costSum += cVal;
+                            }
+                        }
+                    }
+                    if (costSum > 0.0) {
+                        result.todayCost = costSum;
+                        ESP_LOGI(TAG, "Parsed by_api_key/cost: todayCost=%.4f", costSum);
+                    }
+                }
+                cJSON_Delete(root);
+            }
+        }
+
+        // If todayCost was not returned by API but tokens exist, compute estimate
+        if (result.todayCost == 0.0 && result.todayTokens > 0) {
+            result.todayCost = (result.todayTokens / 1000000.0) * 1.5;
         }
     }
 
