@@ -67,6 +67,7 @@
 #include "apps/speed_test.hpp"
 #include "apps/randomizer.hpp"
 #include "apps/xiaozhi.hpp"
+#include "apps/tetris.hpp"
 #include <memory>
 
 #define TAG "main"
@@ -157,6 +158,8 @@ static void register_apps(void)
         [] { return std::make_unique<apps::GravityMaze>(); },"maze");
     WindowManager::instance().registerApp("萌芽物语", ui::icons::Garden,
         [] { return std::make_unique<apps::Garden>(); },"garden");
+    WindowManager::instance().registerApp("俄罗斯方块", ui::icons::Patterns,
+        [] { return std::make_unique<apps::Tetris>(); },"tetris");
     WindowManager::instance().registerApp("小智AI", ui::icons::Xiaozhi,
         [] { return std::make_unique<apps::Xiaozhi>(); },"xiaozhi");
     WindowManager::instance().registerApp("儿歌音乐", ui::icons::Music,

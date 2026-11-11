@@ -112,6 +112,7 @@ set(MAIN_SRCS
     "apps/calendar.cpp"
     "apps/dino.cpp"
     "apps/gravity_maze.cpp"
+    "apps/tetris.cpp"
     "apps/morse.cpp"
     "apps/bt_keyboard_mouse.cpp"
     "apps/bt_music.cpp"
