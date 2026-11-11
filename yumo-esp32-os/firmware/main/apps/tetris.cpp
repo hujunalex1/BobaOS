@@ -163,36 +163,42 @@ void Tetris::onCreate(lv_obj_t *parent) {
         } else if (code == LV_EVENT_PRESSING) {
             int dx = p.x - self->lastDrag.x;
             int dy = p.y - self->lastDrag.y;
-            if (std::abs(p.x - self->touchStart.x) > 8 || std::abs(p.y - self->touchStart.y) > 8) {
+            if (std::abs(p.x - self->touchStart.x) > 6 || std::abs(p.y - self->touchStart.y) > 6) {
                 self->isDragging = true;
             }
 
-            // Continuous horizontal drag
-            if (dx <= -CellSize) {
+            // Continuous horizontal drag with step accumulation
+            while (dx <= -CellSize) {
                 self->moveLeft();
-                self->lastDrag.x = p.x;
-            } else if (dx >= CellSize) {
+                self->lastDrag.x -= CellSize;
+                dx += CellSize;
+            }
+            while (dx >= CellSize) {
                 self->moveRight();
-                self->lastDrag.x = p.x;
+                self->lastDrag.x += CellSize;
+                dx -= CellSize;
             }
 
-            // Downward drag -> soft drop
-            if (dy >= CellSize * 2) {
+            // Continuous soft drop drag
+            while (dy >= CellSize * 2) {
+                self->score += 1;
                 self->stepDrop();
-                self->lastDrag.y = p.y;
+                self->lastDrag.y += CellSize * 2;
+                dy -= CellSize * 2;
             }
         } else if (code == LV_EVENT_RELEASED) {
             uint32_t dt = nowMs() - self->touchDownTick;
             int totalDx = std::abs(p.x - self->touchStart.x);
             int totalDy = p.y - self->touchStart.y;
 
-            if (!self->isDragging && dt < 280 && totalDx < 10 && std::abs(totalDy) < 10) {
+            if (!self->isDragging && dt < 280 && totalDx < 12 && std::abs(totalDy) < 12) {
                 // Short tap -> rotate!
                 self->rotatePiece(1);
-            } else if (totalDy > CellSize * 4 && dt < 350) {
+            } else if (totalDy > CellSize * 3 && dt < 350) {
                 // Fast swipe down -> hard drop!
                 self->hardDrop();
             }
+            self->isDragging = false;
         }
     }, LV_EVENT_ALL, this);
 
@@ -211,6 +217,19 @@ void Tetris::onCreate(lv_obj_t *parent) {
         if (!self->running || self->paused || self->gameOver) return;
 
         uint32_t now = nowMs();
+
+        // Check hold repeat (DAS: Delayed Auto Shift)
+        if (self->heldDir != HoldDir::None && now >= self->nextRepeatTick) {
+            self->nextRepeatTick = now + 75; // 75ms repeat (~13 shifts/sec)
+            if (self->heldDir == HoldDir::Left) {
+                self->moveLeft();
+            } else if (self->heldDir == HoldDir::Right) {
+                self->moveRight();
+            } else if (self->heldDir == HoldDir::Down) {
+                self->score += 1;
+                self->stepDrop();
+            }
+        }
 
         // Check if clearing rows flash animation is active
         if (!self->clearingRows.empty()) {
@@ -243,10 +262,10 @@ void Tetris::onCreate(lv_obj_t *parent) {
 }
 
 void Tetris::createHud(lv_obj_t *parent) {
-    // Next piece card (x = 122, y = 8, w = 112, h = 58)
-    auto nextBox = c::panel(parent, 112, 58);
-    lv_obj_set_pos(nextBox, 122, 8);
-    lv_obj_set_style_pad_all(nextBox, 3, 0);
+    // Next piece card (x = 120, y = 6, w = 116, h = 58)
+    auto nextBox = c::panel(parent, 116, 58);
+    lv_obj_set_pos(nextBox, 120, 6);
+    lv_obj_set_style_pad_all(nextBox, 4, 0);
     lv_obj_set_style_radius(nextBox, 8, 0);
     lv_obj_set_style_bg_color(nextBox, lv_color_hex(0x181C26), 0);
     lv_obj_set_style_border_width(nextBox, 1, 0);
@@ -256,96 +275,142 @@ void Tetris::createHud(lv_obj_t *parent) {
     lv_image_set_src(previewImg, &previewDsc);
     lv_obj_set_pos(previewImg, 4, 4);
 
-    auto scoreLabel = c::label(nextBox, "得分", 56);
+    // Chinese labels use default theme font (fontSmall / fontCjkFull) so Chinese glyphs render
+    auto scoreLabel = c::label(nextBox, "得分", 58);
     lv_obj_set_pos(scoreLabel, 54, 4);
-    lv_obj_set_style_text_font(scoreLabel, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(scoreLabel, lv_color_hex(0x8C9AA8), 0);
 
-    scoreVal = c::label(nextBox, "0", 56);
+    scoreVal = c::label(nextBox, "0", 58);
     lv_obj_set_pos(scoreVal, 54, 18);
     lv_obj_set_style_text_font(scoreVal, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(scoreVal, lv_color_hex(0xFADB14), 0);
 
-    auto linesLabel = c::label(nextBox, "行数", 56);
+    auto linesLabel = c::label(nextBox, "行数", 58);
     lv_obj_set_pos(linesLabel, 54, 34);
-    lv_obj_set_style_text_font(linesLabel, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(linesLabel, lv_color_hex(0x8C9AA8), 0);
 
-    linesVal = c::label(nextBox, "0", 56);
+    linesVal = c::label(nextBox, "0", 30);
     lv_obj_set_pos(linesVal, 84, 34);
-    lv_obj_set_style_text_font(linesVal, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(linesVal, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(linesVal, lv_color_hex(0x52C41A), 0);
 }
 
 void Tetris::createControls(lv_obj_t *parent) {
-    // 1. Rotate Button (x = 122, y = 70, w = 112, h = 40)
-    auto rotBtn = c::button(parent, "↻ 旋转", [](lv_event_t *e) {
-        auto self = static_cast<Tetris *>(lv_event_get_user_data(e));
-        if (!self->paused && !self->gameOver) self->rotatePiece(1);
-    }, this, 112, 40);
-    lv_obj_set_pos(rotBtn, 122, 70);
-    lv_obj_set_style_radius(rotBtn, 10, 0);
-    lv_obj_set_style_bg_color(rotBtn, lv_color_hex(0x722ED1), 0); // Neon Violet
-    lv_obj_set_style_border_width(rotBtn, 1, 0);
-    lv_obj_set_style_border_color(rotBtn, lv_color_hex(0x9254DE), 0);
+    auto makeBtn = [this](lv_obj_t *parent, const char *symbol, const char *text,
+                          int x, int y, int w, int h, lv_color_t color, lv_color_t border,
+                          lv_event_cb_t cb) {
+        auto btn = lv_button_create(parent);
+        lv_obj_set_pos(btn, x, y);
+        lv_obj_set_size(btn, w, h);
+        lv_obj_set_style_radius(btn, 8, 0);
+        lv_obj_set_style_bg_color(btn, color, 0);
+        lv_obj_set_style_border_width(btn, 1, 0);
+        lv_obj_set_style_border_color(btn, border, 0);
+        lv_obj_set_style_pad_all(btn, 0, 0);
+        lv_obj_set_ext_click_area(btn, 4);
+        lv_obj_clear_flag(btn, LV_OBJ_FLAG_SCROLLABLE);
 
-    // 2. Left Button (x = 122, y = 114, w = 54, h = 42)
-    auto leftBtn = c::button(parent, "◀", [](lv_event_t *e) {
-        auto self = static_cast<Tetris *>(lv_event_get_user_data(e));
-        if (!self->paused && !self->gameOver) self->moveLeft();
-    }, this, 54, 42);
-    lv_obj_set_pos(leftBtn, 122, 114);
-    lv_obj_set_style_radius(leftBtn, 10, 0);
-    lv_obj_set_style_bg_color(leftBtn, lv_color_hex(0x1D39C4), 0); // Deep Blue
-    lv_obj_set_style_border_width(leftBtn, 1, 0);
-    lv_obj_set_style_border_color(leftBtn, lv_color_hex(0x2F54EB), 0);
-
-    // 3. Right Button (x = 180, y = 114, w = 54, h = 42)
-    auto rightBtn = c::button(parent, "▶", [](lv_event_t *e) {
-        auto self = static_cast<Tetris *>(lv_event_get_user_data(e));
-        if (!self->paused && !self->gameOver) self->moveRight();
-    }, this, 54, 42);
-    lv_obj_set_pos(rightBtn, 180, 114);
-    lv_obj_set_style_radius(rightBtn, 10, 0);
-    lv_obj_set_style_bg_color(rightBtn, lv_color_hex(0x1D39C4), 0); // Deep Blue
-    lv_obj_set_style_border_width(rightBtn, 1, 0);
-    lv_obj_set_style_border_color(rightBtn, lv_color_hex(0x2F54EB), 0);
-
-    // 4. Soft Drop Button (x = 122, y = 160, w = 54, h = 40)
-    auto dropBtn = c::button(parent, "▼ 降", [](lv_event_t *e) {
-        auto self = static_cast<Tetris *>(lv_event_get_user_data(e));
-        if (!self->paused && !self->gameOver) {
-            self->score += 1;
-            self->stepDrop();
+        auto lbl = lv_label_create(btn);
+        lv_obj_set_style_text_font(lbl, t::fontSmall(), 0);
+        lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
+        if (text && *text) {
+            char buf[32];
+            std::snprintf(buf, sizeof(buf), "%s %s", symbol, text);
+            lv_label_set_text(lbl, buf);
+        } else {
+            lv_label_set_text(lbl, symbol);
         }
-    }, this, 54, 40);
-    lv_obj_set_pos(dropBtn, 122, 160);
-    lv_obj_set_style_radius(dropBtn, 10, 0);
-    lv_obj_set_style_bg_color(dropBtn, lv_color_hex(0x006D75), 0); // Teal
-    lv_obj_set_style_border_width(dropBtn, 1, 0);
-    lv_obj_set_style_border_color(dropBtn, lv_color_hex(0x13C2C2), 0);
+        lv_obj_center(lbl);
+        lv_obj_clear_flag(lbl, LV_OBJ_FLAG_CLICKABLE);
 
-    // 5. Hard Drop Button (x = 180, y = 160, w = 54, h = 40)
-    auto hardBtn = c::button(parent, "⚡落", [](lv_event_t *e) {
-        auto self = static_cast<Tetris *>(lv_event_get_user_data(e));
-        if (!self->paused && !self->gameOver) self->hardDrop();
-    }, this, 54, 40);
-    lv_obj_set_pos(hardBtn, 180, 160);
-    lv_obj_set_style_radius(hardBtn, 10, 0);
-    lv_obj_set_style_bg_color(hardBtn, lv_color_hex(0xD4380D), 0); // Volcano
-    lv_obj_set_style_border_width(hardBtn, 1, 0);
-    lv_obj_set_style_border_color(hardBtn, lv_color_hex(0xFA541C), 0);
+        lv_obj_add_event_cb(btn, cb, LV_EVENT_ALL, this);
+        return btn;
+    };
 
-    // 6. Pause / Menu Button (x = 122, y = 204, w = 112, h = 26)
-    auto pauseBtn = c::button(parent, "⏸ 暂停", [](lv_event_t *e) {
-        auto self = static_cast<Tetris *>(lv_event_get_user_data(e));
-        self->showMenu(false);
-    }, this, 112, 26);
-    lv_obj_set_pos(pauseBtn, 122, 204);
-    lv_obj_set_style_radius(pauseBtn, 8, 0);
-    lv_obj_set_style_bg_color(pauseBtn, lv_color_hex(0x262626), 0);
-    lv_obj_set_style_border_width(pauseBtn, 1, 0);
-    lv_obj_set_style_border_color(pauseBtn, lv_color_hex(0x434343), 0);
+    // 1. Rotate Button (x = 120, y = 68, w = 116, h = 42)
+    makeBtn(parent, LV_SYMBOL_REFRESH, "旋转", 120, 68, 116, 42,
+            lv_color_hex(0x722ED1), lv_color_hex(0x9254DE),
+            [](lv_event_t *e) {
+                if (lv_event_get_code(e) == LV_EVENT_PRESSED) {
+                    auto self = static_cast<Tetris *>(lv_event_get_user_data(e));
+                    if (!self->paused && !self->gameOver) self->rotatePiece(1);
+                }
+            });
+
+    // 2. Left Button (x = 120, y = 114, w = 56, h = 44)
+    makeBtn(parent, LV_SYMBOL_LEFT, "", 120, 114, 56, 44,
+            lv_color_hex(0x1D39C4), lv_color_hex(0x2F54EB),
+            [](lv_event_t *e) {
+                auto self = static_cast<Tetris *>(lv_event_get_user_data(e));
+                lv_event_code_t code = lv_event_get_code(e);
+                if (code == LV_EVENT_PRESSED) {
+                    if (!self->paused && !self->gameOver) {
+                        self->moveLeft();
+                        self->heldDir = HoldDir::Left;
+                        self->holdStartTick = nowMs();
+                        self->nextRepeatTick = self->holdStartTick + 180;
+                    }
+                } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+                    if (self->heldDir == HoldDir::Left) self->heldDir = HoldDir::None;
+                }
+            });
+
+    // 3. Right Button (x = 180, y = 114, w = 56, h = 44)
+    makeBtn(parent, LV_SYMBOL_RIGHT, "", 180, 114, 56, 44,
+            lv_color_hex(0x1D39C4), lv_color_hex(0x2F54EB),
+            [](lv_event_t *e) {
+                auto self = static_cast<Tetris *>(lv_event_get_user_data(e));
+                lv_event_code_t code = lv_event_get_code(e);
+                if (code == LV_EVENT_PRESSED) {
+                    if (!self->paused && !self->gameOver) {
+                        self->moveRight();
+                        self->heldDir = HoldDir::Right;
+                        self->holdStartTick = nowMs();
+                        self->nextRepeatTick = self->holdStartTick + 180;
+                    }
+                } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+                    if (self->heldDir == HoldDir::Right) self->heldDir = HoldDir::None;
+                }
+            });
+
+    // 4. Soft Drop Button (x = 120, y = 162, w = 56, h = 40)
+    makeBtn(parent, LV_SYMBOL_DOWN, "降", 120, 162, 56, 40,
+            lv_color_hex(0x006D75), lv_color_hex(0x13C2C2),
+            [](lv_event_t *e) {
+                auto self = static_cast<Tetris *>(lv_event_get_user_data(e));
+                lv_event_code_t code = lv_event_get_code(e);
+                if (code == LV_EVENT_PRESSED) {
+                    if (!self->paused && !self->gameOver) {
+                        self->score += 1;
+                        self->stepDrop();
+                        self->heldDir = HoldDir::Down;
+                        self->holdStartTick = nowMs();
+                        self->nextRepeatTick = self->holdStartTick + 150;
+                    }
+                } else if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+                    if (self->heldDir == HoldDir::Down) self->heldDir = HoldDir::None;
+                }
+            });
+
+    // 5. Hard Drop Button (x = 180, y = 162, w = 56, h = 40)
+    makeBtn(parent, LV_SYMBOL_CHARGE, "落", 180, 162, 56, 40,
+            lv_color_hex(0xD4380D), lv_color_hex(0xFA541C),
+            [](lv_event_t *e) {
+                if (lv_event_get_code(e) == LV_EVENT_PRESSED) {
+                    auto self = static_cast<Tetris *>(lv_event_get_user_data(e));
+                    if (!self->paused && !self->gameOver) self->hardDrop();
+                }
+            });
+
+    // 6. Pause / Menu Button (x = 120, y = 206, w = 116, h = 26)
+    makeBtn(parent, LV_SYMBOL_PAUSE, "暂停", 120, 206, 116, 26,
+            lv_color_hex(0x262626), lv_color_hex(0x434343),
+            [](lv_event_t *e) {
+                if (lv_event_get_code(e) == LV_EVENT_CLICKED || lv_event_get_code(e) == LV_EVENT_PRESSED) {
+                    auto self = static_cast<Tetris *>(lv_event_get_user_data(e));
+                    self->showMenu(false);
+                }
+            });
 }
 
 void Tetris::createMenuOverlay(lv_obj_t *parent) {
@@ -365,19 +430,19 @@ void Tetris::createMenuOverlay(lv_obj_t *parent) {
     menuTitle = c::label(card, "俄罗斯方块", 180);
     lv_obj_align(menuTitle, LV_ALIGN_TOP_MID, 0, 10);
     lv_obj_set_style_text_align(menuTitle, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_font(menuTitle, t::fontMenu(), 0);
+    lv_obj_set_style_text_font(menuTitle, t::fontSmall(), 0);
     lv_obj_set_style_text_color(menuTitle, lv_color_hex(0xFFFFFF), 0);
 
     menuScore = c::label(card, "得分: 0  行数: 0", 180);
     lv_obj_align(menuScore, LV_ALIGN_TOP_MID, 0, 36);
     lv_obj_set_style_text_align(menuScore, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_font(menuScore, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(menuScore, t::fontSmall(), 0);
     lv_obj_set_style_text_color(menuScore, lv_color_hex(0xFADB14), 0);
 
     menuBest = c::label(card, "历史最高: 0", 180);
     lv_obj_align(menuBest, LV_ALIGN_TOP_MID, 0, 56);
     lv_obj_set_style_text_align(menuBest, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_font(menuBest, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(menuBest, t::fontSmall(), 0);
     lv_obj_set_style_text_color(menuBest, lv_color_hex(0x52C41A), 0);
 
     // Resume / Start Button
@@ -414,6 +479,7 @@ void Tetris::createMenuOverlay(lv_obj_t *parent) {
 void Tetris::showMenu(bool isGameOver) {
     paused = true;
     gameOver = isGameOver;
+    heldDir = HoldDir::None;
 
     char scoreBuf[48];
     std::snprintf(scoreBuf, sizeof(scoreBuf), "得分: %lu   行数: %lu", static_cast<unsigned long>(score), static_cast<unsigned long>(lines));
@@ -438,6 +504,7 @@ void Tetris::showMenu(bool isGameOver) {
 void Tetris::hideMenu() {
     paused = false;
     running = true;
+    heldDir = HoldDir::None;
     lastDropTick = nowMs();
     lv_obj_set_hidden(menuOverlay, true);
 }

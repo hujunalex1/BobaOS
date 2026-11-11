@@ -128,7 +128,8 @@ void readPointer(lv_indev_t *input,lv_indev_data_t *data) {
     const bool backEligible = sys::Power::isScreenOn() && !sys::Power::sleepPending() &&
                               !sheet && !openPending && !closePending &&
                               !swipe.captured && (route != quick::Route::Hold) &&
-                              !WindowManager::instance().atHome();
+                              !WindowManager::instance().atHome() &&
+                              !WindowManager::instance().handlesHorizontalGesture();
 
     if(backEligible) {
         const bool backTriggered = edgeBackSwipe.update(

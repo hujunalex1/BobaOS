@@ -47,6 +47,7 @@ public:
     void goBack(void); // App-internal back, otherwise destroy the foreground App
     void goHome(void); // destroy the foreground App and return home
     bool atHome(void) const { return !m_active; }
+    bool handlesHorizontalGesture() const { return m_active && m_active->handlesHorizontalGesture(); }
     const char *activeName() const { return m_active?m_active->name():"桌面"; } // GUI context only
     lv_obj_t *inputRoot() const;
     bool directionalKey(lv_dir_t direction);

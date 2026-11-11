@@ -102,9 +102,18 @@ void initCjkFont(void)
     ESP_LOGI(TAG, "CJK font ready (baked GB2312, line_height=%ld)",
              static_cast<long>(g_cjk_font.line_height));
 }
+lv_font_t g_menu_font;
+bool g_menu_ready = false;
 } // namespace
 
-const lv_font_t *fontMenu(void) { return &lv_font_menu_14; }
+const lv_font_t *fontMenu(void) {
+    if (!g_menu_ready) {
+        g_menu_font = lv_font_menu_14;
+        g_menu_font.fallback = fontCjkFull();
+        g_menu_ready = true;
+    }
+    return &g_menu_font;
+}
 const lv_font_t *fontReading(void) { return &lv_font_reading_15; }
 
 const lv_font_t *fontCjkFull(void)

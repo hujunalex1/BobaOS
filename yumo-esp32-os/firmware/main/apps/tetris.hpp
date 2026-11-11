@@ -13,7 +13,7 @@ class Tetris : public ui::App {
 public:
     const char *name() const override { return "俄罗斯方块"; }
     const char *icon() const override { return ui::icons::Patterns; }
-    bool handlesHorizontalGesture() const override { return true; }
+    bool handlesHorizontalGesture() const override { return !paused; }
     bool allowsQuickPanel() const override { return paused; }
     uint32_t powerHints() const override {
         return running && !paused ? (sys::power::StayLit | sys::power::KeepSession) : sys::power::None;
@@ -128,6 +128,12 @@ private:
     lv_point_t lastDrag{};
     uint32_t touchDownTick{0};
     bool isDragging{false};
+
+    // Auto-repeat (DAS: Delayed Auto Shift) for hold keys
+    enum class HoldDir : uint8_t { None = 0, Left, Right, Down };
+    HoldDir heldDir{HoldDir::None};
+    uint32_t holdStartTick{0};
+    uint32_t nextRepeatTick{0};
 
     std::shared_ptr<core::game_audio::Session> audio;
 };
