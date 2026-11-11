@@ -4,6 +4,8 @@
 #include "app.hpp"
 #include "lvgl.h"
 #include "ui/almanac_clock.hpp"
+#include "ui/flip_clock.hpp"
+#include "ui/cute_clock.hpp"
 #include <time.h>
 
 namespace apps {
@@ -34,6 +36,8 @@ private:
 
     lv_obj_t *m_faceArea=nullptr;
     ui::AlmanacClock m_almanac;
+    ui::FlipClock m_flip;
+    ui::CuteClock m_cute;
     lv_obj_t *m_weekday=nullptr,*m_seconds=nullptr;
     lv_obj_t *m_digits[4]{},*m_colon=nullptr,*m_numerals[4]{},*m_dialBrand=nullptr;
     lv_point_precise_t m_tickPoints[60][2]{};

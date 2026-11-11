@@ -12,7 +12,7 @@ LV_FONT_DECLARE(lv_font_clock_84);
 
 namespace apps {
 
-static constexpr int kFaceCount = 4;
+static constexpr int kFaceCount = 6;
 static constexpr int kFaceHeight=240;
 static constexpr int kDialSize = kFaceHeight;
 static constexpr int kDialCenter = kDialSize / 2;
@@ -178,13 +178,15 @@ void Watchface::onShow() { m_visible=true;if(m_timer) lv_timer_resume(m_timer);m
 void Watchface::onPowerSaving(bool enabled) {
     m_powerSaving=enabled;
     if(m_timer)lv_timer_set_period(m_timer,enabled?1000:200);
-    if(enabled)m_almanac.stop();
+    if(enabled) { m_almanac.stop(); m_flip.stop(); m_cute.stop(); }
 }
-void Watchface::onHide() { m_visible=false;m_tracking=false;m_almanac.stop();if(m_timer) lv_timer_pause(m_timer); }
+void Watchface::onHide() { m_visible=false;m_tracking=false;m_almanac.stop();m_flip.stop();m_cute.stop();if(m_timer) lv_timer_pause(m_timer); }
 
 void Watchface::onDestroy(void)
 {
     m_almanac.stop();
+    m_flip.stop();
+    m_cute.stop();
     if (m_timer) {
         lv_timer_delete(m_timer);
         m_timer = nullptr;
@@ -306,13 +308,29 @@ bool Watchface::onDirectionalKey(lv_dir_t direction) {
 
 void Watchface::applyFace(void)
 {
+    m_almanac.hide();
+    m_flip.hide();
+    m_cute.hide();
+
     if(m_face==3) {
         for(uint32_t i=0;i<lv_obj_get_child_count(m_faceArea);++i)setVisible(lv_obj_get_child(m_faceArea,i),false);
         m_almanac.show(m_faceArea);
         enableGestureBubbleRecursive(m_faceArea);
         return;
     }
-    m_almanac.hide();
+    if(m_face==4) {
+        for(uint32_t i=0;i<lv_obj_get_child_count(m_faceArea);++i)setVisible(lv_obj_get_child(m_faceArea,i),false);
+        m_flip.show(m_faceArea);
+        enableGestureBubbleRecursive(m_faceArea);
+        return;
+    }
+    if(m_face==5) {
+        for(uint32_t i=0;i<lv_obj_get_child_count(m_faceArea);++i)setVisible(lv_obj_get_child(m_faceArea,i),false);
+        m_cute.show(m_faceArea);
+        enableGestureBubbleRecursive(m_faceArea);
+        return;
+    }
+
     const bool digital = m_face == 0;
     const bool hybrid = m_face == 2;
     setVisible(m_weekday,digital);setVisible(m_seconds,digital);setVisible(m_colon,digital);
@@ -560,6 +578,8 @@ void Watchface::refresh(void)
     localtime_r(&now, &value);
 
     if(m_face==3) {m_almanac.refresh(value,m_visible && !m_powerSaving);return;}
+    if(m_face==4) {m_flip.refresh(value,m_visible && !m_powerSaving);return;}
+    if(m_face==5) {m_cute.refresh(value,m_visible && !m_powerSaving);return;}
 
     const bool digital = m_face == 0;
     const bool hybrid = m_face == 2;

@@ -88,6 +88,8 @@ set(MAIN_SRCS
     "ui/bluetooth_pairing.cpp"
     "ui/boot_animation.cpp"
     "ui/almanac_clock.cpp"
+    "ui/flip_clock.cpp"
+    "ui/cute_clock.cpp"
     "ui/lv_font_almanac_24.c"
     "ui/lv_font_menu_14.c"
     "ui/lv_font_code_13.c"
