@@ -25,6 +25,8 @@ void DeepSeekApp::onCreate(lv_obj_t *parent) {
 
     createUi(m_root);
 
+    core::DeepSeekClient::instance().init();
+
     lv_obj_add_event_cb(m_root, touchCb, LV_EVENT_ALL, this);
 
     m_timer = lv_timer_create(timerCb, 1000, this);
@@ -287,7 +289,7 @@ void DeepSeekApp::createUi(lv_obj_t *parent) {
     lv_obj_set_style_text_font(uDesc, t::fontSmall(), 0);
     lv_obj_set_style_text_color(uDesc, lv_color_hex(0x94A3B8), 0);
 
-    m_lblIpGuide = c::label(m_viewUnconfigured, "http://<IP>/api/deepseek", 200);
+    m_lblIpGuide = c::label(m_viewUnconfigured, "http://<IP>/ds", 200);
     lv_obj_set_pos(m_lblIpGuide, 0, 96);
     lv_obj_set_style_text_align(m_lblIpGuide, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(m_lblIpGuide, &lv_font_montserrat_12, 0);
@@ -367,7 +369,7 @@ void DeepSeekApp::updateUi() {
         std::string ip = sys::Connectivity::snapshot().ip;
         if (!ip.empty()) {
             char ipBuf[64];
-            std::snprintf(ipBuf, sizeof(ipBuf), "http://%s/api/deepseek", ip.c_str());
+            std::snprintf(ipBuf, sizeof(ipBuf), "http://%s/ds", ip.c_str());
             c::setText(m_lblIpGuide, ipBuf);
         }
         return;

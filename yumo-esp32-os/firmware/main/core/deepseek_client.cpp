@@ -1,6 +1,7 @@
 #include "deepseek_client.hpp"
 
 #include "esp_http_client.h"
+#include "esp_http_server.h"
 #include "esp_crt_bundle.h"
 #include "nvs_flash.h"
 #include "cJSON.h"
@@ -16,6 +17,110 @@ namespace core {
 
 static const char *TAG = "DeepSeekClient";
 static const char *kNvsNamespace = "ds_monitor";
+static httpd_handle_t s_dsServer = nullptr;
+
+static esp_err_t dsGetHandler(httpd_req_t *req) {
+    const char *html = 
+        "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+        "<title>BobaOS - DeepSeek 配置</title>"
+        "<style>body{background:#0b0f19;color:#e2e8f0;font-family:-apple-system,sans-serif;padding:24px 16px;margin:0}"
+        ".card{background:#131c2e;border:1px solid #1e293b;border-radius:16px;padding:20px;max-width:420px;margin:0 auto;box-shadow:0 10px 25px rgba(0,0,0,0.5)}"
+        "h2{color:#38bdf8;margin:0 0 10px;font-size:20px}p{color:#94a3b8;font-size:13px;line-height:1.5}"
+        "label{font-size:13px;font-weight:600;color:#cbd5e1;display:block;margin-top:12px}"
+        "input{width:100%;box-sizing:border-box;padding:12px;margin:6px 0 12px;background:#0f172a;border:1px solid #334155;border-radius:10px;color:#fff;font-size:14px}"
+        "button{width:100%;padding:14px;background:#2563eb;color:#fff;border:none;border-radius:10px;font-weight:bold;font-size:15px;cursor:pointer;margin-top:10px}"
+        ".tip{background:#1e293b;border-radius:8px;padding:10px;font-size:11px;color:#94a3b8;margin-top:14px}"
+        "</style></head><body><div class='card'>"
+        "<h2>🐳 DeepSeek 凭据配置</h2>"
+        "<p>设备已接入您的热点。请填入 platform.deepseek.com 的凭据：</p>"
+        "<form method='POST' action='/ds'>"
+        "<label>平台 userToken (推荐，含Token真实统计):</label>"
+        "<input name='userToken' placeholder='在 platform.deepseek.com LocalStorage 复制'>"
+        "<label>API Key (备用，sk-...):</label>"
+        "<input name='apiKey' placeholder='sk-...'>"
+        "<button type='submit'>💾 保存并同步到设备</button>"
+        "</form>"
+        "<div class='tip'>💡 提示：在电脑登录 platform.deepseek.com 按 F12 -> Application -> Local Storage 即可复制 userToken。</div>"
+        "</div></body></html>";
+
+    httpd_resp_set_type(req, "text/html; charset=utf-8");
+    return httpd_resp_send(req, html, HTTPD_RESP_USE_STRLEN);
+}
+
+static esp_err_t dsPostHandler(httpd_req_t *req) {
+    char buf[1024] = {0};
+    int ret = httpd_req_recv(req, buf, sizeof(buf) - 1);
+    if (ret <= 0) {
+        return httpd_resp_send_500(req);
+    }
+
+    std::string postData(buf, ret);
+    std::string userToken, apiKey;
+
+    cJSON *root = cJSON_Parse(postData.c_str());
+    if (root) {
+        cJSON *u = cJSON_GetObjectItem(root, "userToken");
+        cJSON *a = cJSON_GetObjectItem(root, "apiKey");
+        if (u && u->valuestring) userToken = u->valuestring;
+        if (a && a->valuestring) apiKey = a->valuestring;
+        cJSON_Delete(root);
+    } else {
+        char uVal[512] = {0};
+        char aVal[512] = {0};
+        if (httpd_query_key_value(postData.c_str(), "userToken", uVal, sizeof(uVal)) == ESP_OK) {
+            userToken = uVal;
+        }
+        if (httpd_query_key_value(postData.c_str(), "apiKey", aVal, sizeof(aVal)) == ESP_OK) {
+            apiKey = aVal;
+        }
+    }
+
+    if (!userToken.empty() || !apiKey.empty()) {
+        DeepSeekClient::instance().setCredentials(userToken, apiKey);
+        DeepSeekClient::instance().fetchAsync(nullptr);
+    }
+
+    const char *resp = "<!DOCTYPE html><html><body style='background:#0b0f19;color:#34d399;font-family:sans-serif;text-align:center;padding:40px'>"
+                       "<h2>✅ 保存成功！</h2><p style='color:#cbd5e1'>设备已成功接收凭据，并开始拉取 DeepSeek 数据，请查看设备屏幕。</p>"
+                       "<a href='/ds' style='color:#38bdf8'>返回修改</a></body></html>";
+    httpd_resp_set_type(req, "text/html; charset=utf-8");
+    return httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
+}
+
+static void startConfigServer() {
+    if (s_dsServer) return;
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    config.server_port = 80;
+    config.ctrl_port = 32768;
+    config.max_uri_handlers = 8;
+
+    if (httpd_start(&s_dsServer, &config) == ESP_OK) {
+        httpd_uri_t getUri{};
+        getUri.uri = "/";
+        getUri.method = HTTP_GET;
+        getUri.handler = dsGetHandler;
+        httpd_register_uri_handler(s_dsServer, &getUri);
+
+        httpd_uri_t getDs{};
+        getDs.uri = "/ds";
+        getDs.method = HTTP_GET;
+        getDs.handler = dsGetHandler;
+        httpd_register_uri_handler(s_dsServer, &getDs);
+
+        httpd_uri_t postDs{};
+        postDs.uri = "/ds";
+        postDs.method = HTTP_POST;
+        postDs.handler = dsPostHandler;
+        httpd_register_uri_handler(s_dsServer, &postDs);
+
+        httpd_uri_t apiDs{};
+        apiDs.uri = "/api/deepseek";
+        apiDs.method = HTTP_POST;
+        apiDs.handler = dsPostHandler;
+        httpd_register_uri_handler(s_dsServer, &apiDs);
+    }
+}
 
 DeepSeekClient &DeepSeekClient::instance() {
     static DeepSeekClient inst;
@@ -28,6 +133,7 @@ DeepSeekClient::DeepSeekClient() {
 
 void DeepSeekClient::init() {
     loadFromNvs();
+    startConfigServer();
 }
 
 bool DeepSeekClient::hasCredentials() const {
@@ -72,6 +178,31 @@ void DeepSeekClient::loadFromNvs() {
     }
 
     nvs_close(handle);
+
+    // Also check SD card file if exists (/sdcard/deepseek.txt or /sdcard/deepseek.json)
+    FILE *f = std::fopen("/sdcard/deepseek.txt", "r");
+    if (!f) f = std::fopen("/sdcard/deepseek.json", "r");
+    if (f) {
+        char sdbuf[1024] = {0};
+        size_t n = std::fread(sdbuf, 1, sizeof(sdbuf) - 1, f);
+        std::fclose(f);
+        if (n > 0) {
+            cJSON *j = cJSON_Parse(sdbuf);
+            if (j) {
+                cJSON *u = cJSON_GetObjectItem(j, "userToken");
+                cJSON *a = cJSON_GetObjectItem(j, "apiKey");
+                if (u && u->valuestring) m_userToken = u->valuestring;
+                if (a && a->valuestring) m_apiKey = a->valuestring;
+                cJSON_Delete(j);
+            } else {
+                std::string raw(sdbuf);
+                while (!raw.empty() && (raw.back() == '\r' || raw.back() == '\n' || raw.back() == ' ')) raw.pop_back();
+                if (raw.rfind("sk-", 0) == 0) m_apiKey = raw;
+                else m_userToken = raw;
+            }
+            saveToNvs();
+        }
+    }
 }
 
 void DeepSeekClient::saveToNvs() {
