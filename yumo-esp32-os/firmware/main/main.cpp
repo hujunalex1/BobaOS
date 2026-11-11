@@ -157,8 +157,6 @@ static void register_apps(void)
         [] { return std::make_unique<apps::GravityMaze>(); },"maze");
     WindowManager::instance().registerApp("萌芽物语", ui::icons::Garden,
         [] { return std::make_unique<apps::Garden>(); },"garden");
-    WindowManager::instance().registerApp("FC游戏", ui::icons::Fc,
-        [] { return std::make_unique<apps::FcPlayer>(); },"fc");
     WindowManager::instance().registerApp("小智AI", ui::icons::Xiaozhi,
         [] { return std::make_unique<apps::Xiaozhi>(); },"xiaozhi");
     WindowManager::instance().registerApp("儿歌音乐", ui::icons::Music,
@@ -178,8 +176,6 @@ static void register_apps(void)
     WindowManager::instance().registerApp(
         "故事书", LV_SYMBOL_FILE,
         [] { return std::make_unique<apps::TextReader>(); },"text");
-    WindowManager::instance().registerApp("趣味随机", LV_SYMBOL_SHUFFLE,
-        [] { return std::make_unique<apps::Randomizer>(); },"random");
     WindowManager::instance().registerApp("文件管理", LV_SYMBOL_DIRECTORY,
         [] { return std::make_unique<apps::FileManager>(); },"files");
     WindowManager::instance().registerApp(

@@ -782,8 +782,7 @@ static void buildCandyHome(lv_obj_t *parent) {
     lv_obj_set_style_bg_opa(cupBadge, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(cupBadge, 1, 0);
     lv_obj_set_style_border_color(cupBadge, lv_color_hex(0xFFCCD6), 0);
-    lv_obj_set_clickable(cupBadge, true);
-    lv_obj_add_event_cb(cupBadge, openNamed, LV_EVENT_CLICKED, const_cast<char *>("趣味随机"));
+    lv_obj_set_clickable(cupBadge, false);
 
     // 左侧小草莓矢量微图标
     auto bStraw = lv_obj_create(cupBadge);
@@ -1048,7 +1047,7 @@ static void buildTiles(lv_obj_t *parent) {
     homeDate=compact::label(clock,"",137);lv_obj_set_style_text_font(homeDate,&lv_font_montserrat_14,0);
     lv_obj_set_style_text_align(homeDate,LV_TEXT_ALIGN_CENTER,0);lv_obj_set_pos(homeDate,2,59);
     auto rec=tile("录音机",144,0,96,43);auto recText=compact::label(rec,"录音机");lv_obj_center(recText);
-    auto random=tile("趣味随机",144,44,96,43);auto randomText=compact::label(random,"趣味随机");lv_obj_center(randomText);
+    auto maze=tile("重力迷宫",144,44,96,43);auto mazeText=compact::label(maze,"重力迷宫");lv_obj_center(mazeText);
     auto vault=tile("小智AI",0,88,143,90);
     auto key=compact::label(vault,icons::Xiaozhi);lv_obj_set_style_text_font(key,icons::font24(),0);lv_obj_align(key,LV_ALIGN_TOP_MID,0,10);
     auto vaultText=compact::label(vault,"小智AI");lv_obj_align(vaultText,LV_ALIGN_BOTTOM_MID,0,-10);
