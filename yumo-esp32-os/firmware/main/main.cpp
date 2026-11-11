@@ -68,6 +68,7 @@
 #include "apps/randomizer.hpp"
 #include "apps/xiaozhi.hpp"
 #include "apps/tetris.hpp"
+#include "apps/deepseek_app.hpp"
 #include <memory>
 
 #define TAG "main"
@@ -162,6 +163,8 @@ static void register_apps(void)
         [] { return std::make_unique<apps::Tetris>(); },"tetris");
     WindowManager::instance().registerApp("小智AI", ui::icons::Xiaozhi,
         [] { return std::make_unique<apps::Xiaozhi>(); },"xiaozhi");
+    WindowManager::instance().registerApp("DS用量", LV_SYMBOL_CHARGE,
+        [] { return std::make_unique<apps::DeepSeekApp>(); },"deepseek");
     WindowManager::instance().registerApp("儿歌音乐", ui::icons::Music,
         [] { return std::make_unique<apps::Mp3Music>(); },"mp3");
     WindowManager::instance().registerApp(

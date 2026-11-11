@@ -5,6 +5,7 @@
 #include "vault_json.hpp"
 #include "vault_text.hpp"
 #include "power_mgr.hpp"
+#include "deepseek_client.hpp"
 #include "esp_http_server.h"
 #include "esp_random.h"
 #include "esp_timer.h"
@@ -301,6 +302,35 @@ esp_err_t passwords(httpd_req_t *req) {
   }
   return json(req, out);
 }
+esp_err_t deepseekConfig(httpd_req_t *req) {
+  if (req->method == HTTP_GET) {
+    auto out = cJSON_CreateObject();
+    const auto &ds = core::DeepSeekClient::instance();
+    cJSON_AddBoolToObject(out, "configured", ds.hasCredentials());
+    cJSON_AddStringToObject(out, "userToken", ds.getUserToken().c_str());
+    cJSON_AddStringToObject(out, "apiKey", ds.getApiKey().c_str());
+    const auto data = ds.getData();
+    cJSON_AddBoolToObject(out, "valid", data.valid);
+    cJSON_AddNumberToObject(out, "totalBalance", data.totalBalance);
+    cJSON_AddNumberToObject(out, "todayTokens", (double)data.todayTokens);
+    return json(req, out);
+  }
+  if (req->method == HTTP_POST) {
+    std::string body;
+    if (!receive(req, body, 2048)) return message(req, "400 Bad Request", "接收数据失败");
+    cJSON *root = cJSON_Parse(body.c_str());
+    if (!root) return message(req, "400 Bad Request", "JSON 解析失败");
+    cJSON *uTok = cJSON_GetObjectItem(root, "userToken");
+    cJSON *aKey = cJSON_GetObjectItem(root, "apiKey");
+    std::string userToken = (uTok && uTok->valuestring) ? uTok->valuestring : "";
+    std::string apiKey = (aKey && aKey->valuestring) ? aKey->valuestring : "";
+    cJSON_Delete(root);
+    core::DeepSeekClient::instance().setCredentials(userToken, apiKey);
+    core::DeepSeekClient::instance().fetchAsync(nullptr);
+    return message(req, "200 OK", "{\"ok\":true}");
+  }
+  return message(req, "405 Method Not Allowed", "Method Not Allowed");
+}
 esp_err_t dispatch(httpd_req_t *req) {
   responseHeaders(req);
   if (!admitted(req)) return message(req, "403 Forbidden", "请连接设备热点，使用设备显示的地址访问");
@@ -316,6 +346,7 @@ esp_err_t dispatch(httpd_req_t *req) {
     if (uri == "/api/download" && req->method == HTTP_GET) return download(req);
     if (uri == "/api/upload" && req->method == HTTP_PUT) return upload(req);
     if (uri == "/api/login" && req->method == HTTP_POST) return login(req);
+    if (uri == "/api/deepseek" && (req->method == HTTP_GET || req->method == HTTP_POST)) return deepseekConfig(req);
     if (uri == "/api/passwords" && req->method == HTTP_GET) return passwords(req);
     if (uri == "/api/logout" && req->method == HTTP_POST) {
       std::lock_guard<std::mutex> guard(authMutex);
