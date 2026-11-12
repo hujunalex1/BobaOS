@@ -6,6 +6,30 @@ Automates Ninja compilation for ESP32-S3 Touch LCD 1.54
 import os, stat, subprocess, sys
 from pathlib import Path
 
+
+def find_idf_path() -> Path:
+    if os.environ.get("IDF_PATH"):
+        return Path(os.environ["IDF_PATH"]).expanduser().resolve()
+
+    candidates = [
+        Path.home() / "esp" / "esp-idf",
+        Path("/opt/esp-idf"),
+        *Path.home().glob(".espressif/frameworks/esp-idf-*"),
+    ]
+    for candidate in candidates:
+        if (candidate / "export.sh").is_file():
+            return candidate.resolve()
+
+    raise RuntimeError("未找到 ESP-IDF，请设置 IDF_PATH 环境变量")
+
+
+def find_python_env(tools_path: Path) -> Path:
+    envs = sorted(tools_path.glob("python_env/idf*/bin/python3"))
+    if not envs:
+        raise RuntimeError(f"未找到 ESP-IDF Python 环境，请检查 {tools_path}/python_env")
+    return envs[-1]
+
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 WORKSPACE = REPO_ROOT / "yumo-esp32-os"
@@ -13,12 +37,20 @@ ROOT = WORKSPACE / "firmware"
 BUILD = WORKSPACE / "artifacts/firmware"
 GIT_WRAPPER = SCRIPT_DIR / "bin/git"
 GIT_WRAPPER.chmod(GIT_WRAPPER.stat().st_mode | stat.S_IEXEC)
-SDK = Path("/Users/rebuild/esp/esp-idf")
-TOOLS = Path("/Users/rebuild/.espressif")
-PY = Path("/Users/rebuild/.espressif/python_env/idf6.1_py3.13_env/bin/python3")
-CMAKE = Path("/Users/rebuild/.espressif/python_env/idf6.1_py3.13_env/lib/python3.13/site-packages/cmake/data/bin/cmake")
-NINJA = Path("/Users/rebuild/.espressif/python_env/idf6.1_py3.13_env/bin/ninja")
-XTENSA = Path("/Users/rebuild/.espressif/tools/xtensa-esp-elf/esp-15.2.0_20251204/xtensa-esp-elf/bin")
+SDK = find_idf_path()
+TOOLS = Path(os.environ.get("IDF_TOOLS_PATH", "~/.espressif")).expanduser().resolve()
+PY = find_python_env(TOOLS)
+CMAKE = next((PY.parent.parent / "lib").glob("python*/site-packages/cmake/data/bin/cmake"))
+NINJA = PY.parent / "ninja"
+TOOLCHAINS = sorted((TOOLS / "tools" / "xtensa-esp-elf").glob("*/xtensa-esp-elf/bin"))
+XTENSA = TOOLCHAINS[-1] if TOOLCHAINS else None
+
+if not CMAKE.is_file():
+    raise RuntimeError(f"未找到 CMake: {CMAKE}")
+if not NINJA.is_file():
+    raise RuntimeError(f"未找到 Ninja: {NINJA}")
+if XTENSA is None:
+    raise RuntimeError(f"未找到 Xtensa 工具链，请检查 {TOOLS}/tools/xtensa-esp-elf")
 
 env = os.environ.copy()
 env.update(

@@ -81,7 +81,7 @@ case "$MODE" in
   full)
     if [ -f "$ART/01_factory.bin" ]; then
       echo "正在向 $PORT 更新整机固件（保留 Wi-Fi 配网与凭据）..."
-      flash 0x0 \
+      flash \
         0x0    "$ART/bootloader/bootloader.bin" \
         0x8000 "$ART/partition_table/partition-table.bin" \
         0xd000 "$ART/ota_data_initial.bin" \

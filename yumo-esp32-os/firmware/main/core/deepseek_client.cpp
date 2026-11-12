@@ -13,6 +13,7 @@
 #include <cstring>
 #include <ctime>
 #include <cstdlib>
+#include <atomic>
 #include <vector>
 #include <string>
 #include <algorithm>
@@ -53,6 +54,22 @@ static std::string findFormKey(const std::string &body, const std::string &key) 
     size_t end = body.find('&', pos);
     std::string raw = (end == std::string::npos) ? body.substr(pos) : body.substr(pos, end - pos);
     return urlDecode(raw);
+}
+
+static std::string htmlEscape(const std::string &in) {
+    std::string out;
+    out.reserve(in.size());
+    for (char ch : in) {
+        switch (ch) {
+        case '&': out += "&amp;"; break;
+        case '<': out += "&lt;"; break;
+        case '>': out += "&gt;"; break;
+        case '"': out += "&quot;"; break;
+        case '\'': out += "&#39;"; break;
+        default: out += ch;
+        }
+    }
+    return out;
 }
 
 static void cleanTokenString(std::string &s) {
@@ -166,6 +183,7 @@ static void syncTimeFromHttpDate(const char *dateStr) {
 
 static esp_err_t dsGetHandler(httpd_req_t *req) {
     auto &client = DeepSeekClient::instance();
+
     auto curData = client.getData();
     std::string curU = client.getUserToken();
     std::string curA = client.getApiKey();
@@ -195,6 +213,9 @@ static esp_err_t dsGetHandler(httpd_req_t *req) {
             "尚未配置凭据，请在下方填入。</div>");
     }
 
+    const std::string escU = htmlEscape(curU);
+    const std::string escA = htmlEscape(curA);
+
     std::string html;
     html.reserve(3584);
     html += "<!DOCTYPE html><html><head><meta charset='utf-8'>"
@@ -217,11 +238,11 @@ static esp_err_t dsGetHandler(httpd_req_t *req) {
     html += "<form method='POST' action='/ds'>"
             "<label>1. 平台 userToken (获取实时 Token 统计):</label>"
             "<textarea name='userToken' rows='4' placeholder='在 platform.deepseek.com 登录后按 F12 -> Local Storage 复制 userToken'>";
-    html += curU;
+    html += escU;
     html += "</textarea>"
             "<label>2. API Key (获取官方余额，sk-...):</label>"
             "<input name='apiKey' placeholder='sk-...' value='";
-    html += curA;
+    html += escA;
     html += "'>"
             "<button type='submit'>💾 保存并同步到设备</button>"
             "</form>"
