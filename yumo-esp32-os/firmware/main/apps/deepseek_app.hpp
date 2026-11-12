@@ -23,6 +23,7 @@ private:
     void updateUi();
     void switchView(int viewIdx);
     void triggerRefresh();
+    void setHeroValue(const char *value, const char *unit);
 
     static void timerCb(lv_timer_t *timer);
     static void touchCb(lv_event_t *e);
@@ -43,6 +44,7 @@ private:
 
     // Token View widgets
     lv_obj_t *m_lblTodayToken{nullptr};
+    lv_obj_t *m_lblTokenUnit{nullptr};
     lv_obj_t *m_lblTodayCost{nullptr};
     lv_obj_t *m_lblMonthTok{nullptr};
     lv_obj_t *m_lblPromptTok{nullptr};

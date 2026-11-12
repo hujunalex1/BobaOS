@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstring>
 #include <ctime>
+#include <cstdlib>
 #include <vector>
 #include <string>
 #include <algorithm>
@@ -103,6 +104,27 @@ static int64_t findJsonInt(cJSON *obj, const std::initializer_list<const char*> 
         if (item) return getJsonInt64(item);
     }
     return 0;
+}
+
+// The platform web API answers HTTP 200 with {"code":40002,"msg":"Missing Token"}
+// for a missing/expired session token, and the WAF answers 429 for clients it
+// does not like. Neither is an HTTP-level error, so success has to be judged
+// from the payload, not only from the status line.
+static std::string describePlatformFailure(int status, const std::string &body) {
+    if (status == 0) return "平台接口连接失败";
+    if (status != 200) return "平台接口 HTTP " + std::to_string(status);
+    cJSON *root = cJSON_Parse(body.c_str());
+    if (root) {
+        cJSON *code = cJSON_GetObjectItem(root, "code");
+        if (code && cJSON_IsNumber(code) && code->valueint != 0) {
+            cJSON *msg = cJSON_GetObjectItem(root, "msg");
+            std::string text = (msg && msg->valuestring) ? msg->valuestring : "平台请求被拒绝";
+            cJSON_Delete(root);
+            return text;
+        }
+        cJSON_Delete(root);
+    }
+    return "平台未返回数据";
 }
 
 static void syncTimeFromHttpDate(const char *dateStr) {
@@ -435,7 +457,8 @@ static bool httpGet(const std::string &url, const std::string &authBearer, bool 
     config.buffer_size_tx = 4096;
     config.event_handler = httpEventHandler;
     config.user_data = &ctx;
-    config.skip_cert_common_name_check = true;
+    // Keep hostname verification on: the CA bundle already validates the chain.
+    config.skip_cert_common_name_check = false;
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (!client) {
@@ -461,6 +484,148 @@ static bool httpGet(const std::string &url, const std::string &authBearer, bool 
 
     esp_http_client_cleanup(client);
     return (err == ESP_OK && statusCode >= 200 && statusCode < 300);
+}
+
+// Cost buckets live under biz_data.data[].series[] and are bucketed hourly.
+// The money field name is not stable, so a leaf bucket is recognised as "has a
+// time field and exactly one numeric value next to it".
+static bool isTimeKey(const char *k) {
+    return k && (!std::strcmp(k, "time") || !std::strcmp(k, "timestamp") ||
+                 !std::strcmp(k, "date") || !std::strcmp(k, "start_time") ||
+                 !std::strcmp(k, "begin_time"));
+}
+
+static double collectCost(cJSON *node, int depth, int &hits) {
+    if (!node || depth > 12) return 0.0;
+    if (cJSON_IsArray(node)) {
+        double sum = 0.0;
+        const int n = cJSON_GetArraySize(node);
+        for (int i = 0; i < n; ++i) sum += collectCost(cJSON_GetArrayItem(node, i), depth + 1, hits);
+        return sum;
+    }
+    if (!cJSON_IsObject(node)) return 0.0;
+
+    cJSON *usage = cJSON_GetObjectItem(node, "usage");
+    if (usage && cJSON_IsObject(usage)) {
+        cJSON *c = cJSON_GetObjectItem(usage, "COST");
+        if (!c) c = cJSON_GetObjectItem(usage, "cost");
+        if (!c) c = cJSON_GetObjectItem(usage, "AMOUNT");
+        if (c && cJSON_IsNumber(c)) {
+            ++hits;
+            return getJsonNumber(c);
+        }
+    }
+
+    // Hourly/day bucket: {"time": <ts>, "<money>": 0.0123}
+    if (findJsonInt(node, {"time", "timestamp", "date", "start_time", "begin_time"}) > 0) {
+        double only = 0.0;
+        int numeric = 0;
+        for (cJSON *c = node->child; c; c = c->next) {
+            if (isTimeKey(c->string)) continue;
+            if (cJSON_IsNumber(c)) {
+                only = c->valuedouble;
+                ++numeric;
+            } else if (cJSON_IsString(c) && c->valuestring && c->valuestring[0]) {
+                char *endp = nullptr;
+                const double v = std::strtod(c->valuestring, &endp);
+                if (endp && *endp == '\0') {  // plain numeric string, e.g. "0.0123"
+                    only = v;
+                    ++numeric;
+                }
+            }
+        }
+        if (numeric == 1) {
+            ++hits;
+            return only;
+        }
+    }
+
+    double sum = 0.0;
+    for (cJSON *child = node->child; child; child = child->next) {
+        sum += collectCost(child, depth + 1, hits);
+    }
+    return sum;
+}
+
+struct UsageTotals {
+    int64_t tMonth{0}, pMonth{0}, cMonth{0}, hMonth{0};
+    int64_t tToday{0}, pToday{0}, cToday{0}, hToday{0};
+    int buckets{0};
+};
+
+// Walk an arbitrary JSON tree and aggregate every node that looks like a usage
+// bucket (carries a token count). Depth-limited; a node that has a token count is
+// treated as a leaf so parent summaries are not double counted.
+static void collectUsage(cJSON *node, int64_t todayStart, UsageTotals &out, int depth) {
+    if (!node || depth > 12) return;
+
+    if (cJSON_IsArray(node)) {
+        const int n = cJSON_GetArraySize(node);
+        for (int i = 0; i < n; ++i) collectUsage(cJSON_GetArrayItem(node, i), todayStart, out, depth + 1);
+        return;
+    }
+    if (!cJSON_IsObject(node)) return;
+
+    // Platform schema (verified on device): every bucket is
+    //   {"time": <day start, GMT+8>, "usage": {"RESPONSE_TOKEN": n,
+    //     "REQUEST": calls, "PROMPT_CACHE_HIT_TOKEN": n, "PROMPT_CACHE_MISS_TOKEN": n}}
+    cJSON *usage = cJSON_GetObjectItem(node, "usage");
+    if (usage && cJSON_IsObject(usage)) {
+        cJSON *hitJ = cJSON_GetObjectItem(usage, "PROMPT_CACHE_HIT_TOKEN");
+        cJSON *missJ = cJSON_GetObjectItem(usage, "PROMPT_CACHE_MISS_TOKEN");
+        cJSON *respJ = cJSON_GetObjectItem(usage, "RESPONSE_TOKEN");
+        if (hitJ || missJ || respJ) {
+            int64_t ts = findJsonInt(node, {"time", "timestamp", "date", "start_time", "begin_time"});
+            if (ts > 10000000000LL) ts /= 1000;
+            const int64_t hit = getJsonInt64(hitJ);
+            const int64_t miss = getJsonInt64(missJ);
+            const int64_t resp = getJsonInt64(respJ);
+            const int64_t prompt = hit + miss;
+            const int64_t total = prompt + resp;
+
+            out.tMonth += total;
+            out.pMonth += prompt;
+            out.cMonth += resp;
+            out.hMonth += hit;
+            if (ts >= todayStart) {
+                out.tToday += total;
+                out.pToday += prompt;
+                out.cToday += resp;
+                out.hToday += hit;
+            }
+            ++out.buckets;
+            return;
+        }
+    }
+
+    cJSON *tok = cJSON_GetObjectItem(node, "total_tokens");
+    if (!tok) tok = cJSON_GetObjectItem(node, "total_token");
+    if (!tok) tok = cJSON_GetObjectItem(node, "tokens");
+    if (tok && cJSON_IsNumber(tok)) {
+        int64_t ts = findJsonInt(node, {"timestamp", "time", "date", "start_time", "begin_time"});
+        if (ts > 10000000000LL) ts /= 1000;  // milliseconds -> seconds
+        const int64_t total = getJsonInt64(tok);
+        const int64_t prompt = findJsonInt(node, {"prompt_tokens", "input_tokens", "prompt_token", "prompt"});
+        const int64_t completion = findJsonInt(node, {"completion_tokens", "output_tokens", "completion_token", "completion"});
+        const int64_t hit = findJsonInt(node, {"prompt_cache_hit_tokens", "cache_hit_tokens", "prompt_cache_hit", "cache_hit"});
+
+        out.tMonth += total;
+        out.pMonth += prompt;
+        out.cMonth += completion;
+        out.hMonth += hit;
+        if (ts >= todayStart) {
+            out.tToday += total;
+            out.pToday += prompt;
+            out.cToday += completion;
+            out.hToday += hit;
+        }
+        ++out.buckets;
+        return;
+    }
+
+    for (cJSON *child = node->child; child; child = child->next) {
+        collectUsage(child, todayStart, out, depth + 1);
+    }
 }
 
 bool DeepSeekClient::performFetch() {
@@ -539,13 +704,23 @@ bool DeepSeekClient::performFetch() {
                     result.grantedBalance = getJsonNumber(grt, result.grantedBalance);
                     result.toppedUpBalance = getJsonNumber(top, result.toppedUpBalance);
                     if (cur && cur->valuestring) result.currency = cur->valuestring;
+
+                    // Only a real wallet payload proves the session token works.
+                    // A 200 + {"code":40002} body has no wallet and must not be
+                    // reported as a successful platform sync.
+                    result.valid = true;
+                    result.usingPlatformToken = true;
+                    result.isAvailable = (result.totalBalance > 0.0);
+                    anySuccess = true;
+                } else {
+                    result.platformError = describePlatformFailure(status, summaryResp);
                 }
                 cJSON_Delete(root);
-                result.valid = true;
-                result.usingPlatformToken = true;
-                result.isAvailable = (result.totalBalance > 0.0);
-                anySuccess = true;
+            } else {
+                result.platformError = "平台响应解析失败";
             }
+        } else {
+            result.platformError = describePlatformFailure(status, summaryResp);
         }
 
         // Calculate start and end timestamps in Beijing Time (GMT+8)
@@ -580,63 +755,53 @@ bool DeepSeekClient::performFetch() {
         int aStatus = 0;
         bool aOk = httpGet(amountUrl, uToken, true, amountResp, aStatus);
         if (result.lastPlatformStatus == 0) result.lastPlatformStatus = aStatus;
+        if (!aOk || amountResp.empty()) {
+            if (result.platformError.empty()) {
+                result.platformError = describePlatformFailure(aStatus, amountResp);
+            }
+        }
 
         if (aOk && !amountResp.empty()) {
             cJSON *root = cJSON_Parse(amountResp.c_str());
             if (root) {
                 cJSON *data = cJSON_GetObjectItem(root, "data");
-                cJSON *series = data ? cJSON_GetObjectItem(data, "series") : cJSON_GetObjectItem(root, "series");
-                if (series && cJSON_IsArray(series)) {
-                    int sCount = cJSON_GetArraySize(series);
-                    int64_t tToday = 0, pToday = 0, cToday = 0, hToday = 0;
-                    int64_t tMonth = 0, pMonth = 0, cMonth = 0, hMonth = 0;
-
-                    for (int s = 0; s < sCount; ++s) {
-                        cJSON *sItem = cJSON_GetArrayItem(series, s);
-                        if (!sItem) continue;
-                        cJSON *buckets = cJSON_GetObjectItem(sItem, "buckets");
-                        if (buckets && cJSON_IsArray(buckets)) {
-                            int bCount = cJSON_GetArraySize(buckets);
-                            for (int b = 0; b < bCount; ++b) {
-                                cJSON *bItem = cJSON_GetArrayItem(buckets, b);
-                                if (!bItem) continue;
-                                int64_t bTime = findJsonInt(bItem, {"timestamp", "time", "date", "start_time", "begin_time"});
-                                if (bTime > 10000000000LL) {
-                                    bTime /= 1000; // Convert ms to seconds
-                                }
-                                int64_t tot = findJsonInt(bItem, {"total_tokens", "tokens", "total_token", "amount", "total"});
-                                int64_t pmt = findJsonInt(bItem, {"prompt_tokens", "input_tokens", "prompt_token", "input"});
-                                int64_t cpt = findJsonInt(bItem, {"completion_tokens", "output_tokens", "completion_token", "output"});
-                                int64_t hit = findJsonInt(bItem, {"prompt_cache_hit_tokens", "cache_hit_tokens", "prompt_cache_hit", "cache_hit"});
-
-                                tMonth += tot;
-                                pMonth += pmt;
-                                cMonth += cpt;
-                                hMonth += hit;
-
-                                if (bTime == 0 || bTime >= todayStart || bCount == 1) {
-                                    tToday += tot;
-                                    pToday += pmt;
-                                    cToday += cpt;
-                                    hToday += hit;
-                                }
-                            }
-                        }
-                    }
-
-                    result.monthTokens = tMonth;
-                    result.todayTokens = tToday;
-                    result.promptTokens = pToday;
-                    result.completionTokens = cToday;
-                    result.cacheHitTokens = hToday;
-                    if (pToday > 0) {
-                        result.cacheHitRate = static_cast<double>(hToday) / static_cast<double>(pToday) * 100.0;
+                UsageTotals totals;
+                // The web API's payload shape is not part of any contract: walk the
+                // JSON for anything that carries a token count instead of assuming
+                // data.series[].buckets[], which silently produced "no data".
+                collectUsage(data ? data : root, todayStart, totals, 0);
+                if (totals.buckets > 0) {
+                    result.monthTokens = totals.tMonth;
+                    result.todayTokens = totals.tToday;
+                    result.promptTokens = totals.pToday;
+                    result.completionTokens = totals.cToday;
+                    result.cacheHitTokens = totals.hToday;
+                    if (totals.pToday > 0) {
+                        result.cacheHitRate = static_cast<double>(totals.hToday) / static_cast<double>(totals.pToday) * 100.0;
                     }
                     result.hasTokenStats = true;
                     result.valid = true;
                     anySuccess = true;
-                    ESP_LOGI(TAG, "Parsed by_api_key/amount: todayTokens=%lld, monthTokens=%lld",
-                             (long long)tToday, (long long)tMonth);
+                    ESP_LOGI(TAG, "Parsed usage: todayTokens=%lld, monthTokens=%lld, buckets=%d",
+                             (long long)totals.tToday, (long long)totals.tMonth, totals.buckets);
+                } else {
+                    // Dump exactly one bucket so an unexpected schema can be
+                    // identified from the serial log instead of guessing again.
+                    cJSON *bd = cJSON_GetObjectItem(data, "biz_data");
+                    cJSON *sr = bd ? cJSON_GetObjectItem(bd, "series") : nullptr;
+                    cJSON *it0 = cJSON_IsArray(sr) ? cJSON_GetArrayItem(sr, 0) : nullptr;
+                    cJSON *bk = it0 ? cJSON_GetObjectItem(it0, "buckets") : nullptr;
+                    cJSON *b0 = cJSON_IsArray(bk) ? cJSON_GetArrayItem(bk, 0) : nullptr;
+                    if (b0) {
+                        char *dump = cJSON_PrintUnformatted(b0);
+                        if (dump) {
+                            ESP_LOGW(TAG, "first bucket: %.300s", dump);
+                            cJSON_free(dump);
+                        }
+                    }
+                    ESP_LOGW(TAG, "usage payload unrecognised (%d bytes): %.900s",
+                             (int)amountResp.size(), amountResp.c_str());
+                    if (result.platformError.empty()) result.platformError = "用量数据格式未识别";
                 }
                 cJSON_Delete(root);
             }
@@ -654,40 +819,34 @@ bool DeepSeekClient::performFetch() {
         if (cOk && !costResp.empty()) {
             cJSON *root = cJSON_Parse(costResp.c_str());
             if (root) {
-                cJSON *data = cJSON_GetObjectItem(root, "data");
-                cJSON *series = data ? cJSON_GetObjectItem(data, "series") : cJSON_GetObjectItem(root, "series");
-                if (series && cJSON_IsArray(series)) {
-                    int sCount = cJSON_GetArraySize(series);
-                    double costSum = 0.0;
-                    for (int s = 0; s < sCount; ++s) {
-                        cJSON *sItem = cJSON_GetArrayItem(series, s);
-                        if (!sItem) continue;
-                        cJSON *buckets = cJSON_GetObjectItem(sItem, "buckets");
-                        if (buckets && cJSON_IsArray(buckets)) {
-                            int bCount = cJSON_GetArraySize(buckets);
-                            for (int b = 0; b < bCount; ++b) {
-                                cJSON *bItem = cJSON_GetArrayItem(buckets, b);
-                                if (!bItem) continue;
-                                double cVal = getJsonNumber(cJSON_GetObjectItem(bItem, "cost"));
-                                if (cVal == 0.0) cVal = getJsonNumber(cJSON_GetObjectItem(bItem, "amount"));
-                                if (cVal == 0.0) cVal = getJsonNumber(cJSON_GetObjectItem(bItem, "total_cost"));
-                                costSum += cVal;
-                            }
-                        }
+                int hits = 0;
+                const double costSum = collectCost(root, 0, hits);
+                if (hits > 0) {
+                    result.todayCost = costSum;
+                    result.costKnown = true;
+                    ESP_LOGI(TAG, "Parsed cost: todayCost=%.4f, buckets=%d", costSum, hits);
+                } else {
+                    cJSON *bd = cJSON_GetObjectItem(cJSON_GetObjectItem(root, "data"), "biz_data");
+                    cJSON *arr = bd ? cJSON_GetObjectItem(bd, "data") : nullptr;
+                    cJSON *s0 = cJSON_IsArray(arr) ? cJSON_GetObjectItem(cJSON_GetArrayItem(arr, 0), "series") : nullptr;
+                    cJSON *it = cJSON_IsArray(s0) ? cJSON_GetArrayItem(s0, 0) : nullptr;
+                    cJSON *bks = it ? cJSON_GetObjectItem(it, "buckets") : nullptr;
+                    cJSON *b0 = cJSON_IsArray(bks) ? cJSON_GetArrayItem(bks, 0) : nullptr;
+                    if (b0) {
+                        char *dump = cJSON_PrintUnformatted(b0);
+                        if (dump) { ESP_LOGW(TAG, "first cost bucket: %.200s", dump); cJSON_free(dump); }
                     }
-                    if (costSum > 0.0) {
-                        result.todayCost = costSum;
-                        ESP_LOGI(TAG, "Parsed by_api_key/cost: todayCost=%.4f", costSum);
-                    }
+                    ESP_LOGW(TAG, "cost payload unrecognised (%d bytes): %.300s",
+                             (int)costResp.size(), costResp.c_str());
                 }
                 cJSON_Delete(root);
             }
         }
 
-        // If todayCost was not returned by API but tokens exist, compute estimate
-        if (result.todayCost == 0.0 && result.todayTokens > 0) {
-            result.todayCost = (result.todayTokens / 1000000.0) * 1.5;
-        }
+        // Never invent a cost: real price depends on cache hits and model, and a
+        // fixed ¥/M estimate was off by more than 20x on this account. Leave it
+        // at 0 and let the UI show "用量不可用" instead.
+
     }
 
     if (!anySuccess) {

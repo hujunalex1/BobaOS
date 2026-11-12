@@ -12,6 +12,7 @@ struct DeepSeekData {
     bool isAvailable{true};
     bool usingPlatformToken{false};
     bool hasTokenStats{false};
+    bool costKnown{false};
 
     // Balance
     double totalBalance{0.0};
@@ -32,6 +33,9 @@ struct DeepSeekData {
     int lastPlatformStatus{0};
     time_t lastUpdated{0};
     std::string errorMsg;
+    // Human-readable reason the platform usage API did not return data
+    // (HTTP failure, WAF block, expired token, empty payload...).
+    std::string platformError;
 };
 
 class DeepSeekClient {

@@ -69,11 +69,12 @@ void DeepSeekApp::createUi(lv_obj_t *parent) {
     lv_label_set_text(m_headerSub, "· 用量");
     lv_obj_set_style_text_font(m_headerSub, t::fontSmall(), 0);
     lv_obj_set_style_text_color(m_headerSub, lv_color_hex(0x60A5FA), 0);
-    lv_obj_align_to(m_headerSub, brandLbl, LV_ALIGN_OUT_RIGHT_MID, 4, 0);
+    lv_obj_align_to(m_headerSub, brandLbl, LV_ALIGN_OUT_RIGHT_MID, 6, 0);
 
-    // Status Pill on top-right (w = 60, h = 20)
-    m_statusPill = c::panel(headerBox, 60, 20);
-    lv_obj_set_pos(m_statusPill, 160, 2);
+    // Status Pill on top-right (w = 66, h = 20). Wide enough for the 3-char
+    // states ("同步中"/"待配置") without wrapping inside a 60px pill.
+    m_statusPill = c::panel(headerBox, 66, 20);
+    lv_obj_set_pos(m_statusPill, 154, 2);
     lv_obj_set_style_pad_all(m_statusPill, 0, 0);
     lv_obj_set_style_radius(m_statusPill, 10, 0);
     lv_obj_set_style_bg_color(m_statusPill, lv_color_hex(0x13231B), 0);
@@ -86,7 +87,7 @@ void DeepSeekApp::createUi(lv_obj_t *parent) {
     lv_obj_set_style_bg_color(m_statusDot, lv_color_hex(0x10B981), 0);
     lv_obj_set_style_border_width(m_statusDot, 0, 0);
 
-    m_statusText = c::label(m_statusPill, "在线", 42);
+    m_statusText = c::label(m_statusPill, "在线", 50);
     lv_obj_set_pos(m_statusText, 16, 2);
     lv_obj_set_style_text_font(m_statusText, t::fontSmall(), 0);
     lv_obj_set_style_text_color(m_statusText, lv_color_hex(0x34D399), 0);
@@ -110,7 +111,7 @@ void DeepSeekApp::createUi(lv_obj_t *parent) {
     lv_obj_set_style_border_color(tokHero, lv_color_hex(0x1E293B), 0);
     lv_obj_clear_flag(tokHero, LV_OBJ_FLAG_CLICKABLE);
 
-    auto lblTokTitle = c::label(tokHero, "今日消耗 Token", 100);
+    auto lblTokTitle = c::label(tokHero, "今日消耗", 100);
     lv_obj_set_pos(lblTokTitle, 12, 8);
     lv_obj_set_style_text_font(lblTokTitle, t::fontSmall(), 0);
     lv_obj_set_style_text_color(lblTokTitle, lv_color_hex(0x94A3B8), 0);
@@ -126,6 +127,13 @@ void DeepSeekApp::createUi(lv_obj_t *parent) {
     lv_obj_set_style_text_font(m_lblTodayToken, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(m_lblTodayToken, lv_color_hex(0xFFFFFF), 0);
     lv_label_set_text(m_lblTodayToken, "");
+
+    // Unit suffix: deliberately smaller than the value so "0 Token" never
+    // renders as one oversized run, and aligned to the value's right edge so
+    // it follows the number whether it is "0" or "1.20 M".
+    m_lblTokenUnit = c::label(tokHero, "Token");
+    lv_obj_set_style_text_font(m_lblTokenUnit, t::fontSmall(), 0);
+    lv_obj_set_style_text_color(m_lblTokenUnit, lv_color_hex(0x94A3B8), 0);
 
     m_lblMonthTok = c::label(tokHero, "", 196);
     lv_obj_set_pos(m_lblMonthTok, 12, 58);
@@ -208,7 +216,7 @@ void DeepSeekApp::createUi(lv_obj_t *parent) {
     lv_obj_set_style_text_font(m_lblModeTag, t::fontSmall(), 0);
     lv_obj_set_style_text_color(m_lblModeTag, lv_color_hex(0x60A5FA), 0);
 
-    m_lblTotalBal = c::label(balHero, "¥ 0.00", 196);
+    m_lblTotalBal = c::label(balHero, "CNY 0.00", 196);
     lv_obj_set_pos(m_lblTotalBal, 12, 28);
     lv_obj_set_style_text_font(m_lblTotalBal, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(m_lblTotalBal, lv_color_hex(0xBAE6FD), 0);
@@ -234,7 +242,7 @@ void DeepSeekApp::createUi(lv_obj_t *parent) {
     lv_obj_set_style_text_font(lblTTitle, t::fontSmall(), 0);
     lv_obj_set_style_text_color(lblTTitle, lv_color_hex(0x60A5FA), 0);
 
-    m_lblToppedBal = c::label(balDetail, "¥ 0.00", 90);
+    m_lblToppedBal = c::label(balDetail, "CNY 0.00", 90);
     lv_obj_set_pos(m_lblToppedBal, 12, 28);
     lv_obj_set_style_text_font(m_lblToppedBal, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(m_lblToppedBal, lv_color_hex(0xF1F5F9), 0);
@@ -245,7 +253,7 @@ void DeepSeekApp::createUi(lv_obj_t *parent) {
     lv_obj_set_style_text_font(lblGTitle, t::fontSmall(), 0);
     lv_obj_set_style_text_color(lblGTitle, lv_color_hex(0x34D399), 0);
 
-    m_lblGrantedBal = c::label(balDetail, "¥ 0.00", 90);
+    m_lblGrantedBal = c::label(balDetail, "CNY 0.00", 90);
     lv_obj_set_pos(m_lblGrantedBal, 116, 28);
     lv_obj_set_style_text_font(m_lblGrantedBal, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(m_lblGrantedBal, lv_color_hex(0xF1F5F9), 0);
@@ -256,7 +264,7 @@ void DeepSeekApp::createUi(lv_obj_t *parent) {
     lv_obj_set_style_text_font(lblBillMode, t::fontSmall(), 0);
     lv_obj_set_style_text_color(lblBillMode, lv_color_hex(0x64748B), 0);
 
-    auto lblBillVal = c::label(balDetail, "官方账单已同步", 108);
+    auto lblBillVal = c::label(balDetail, "官方账单已同步", 116);
     lv_obj_set_pos(lblBillVal, 100, 56);
     lv_obj_set_style_text_align(lblBillVal, LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_style_text_font(lblBillVal, t::fontSmall(), 0);
@@ -284,7 +292,7 @@ void DeepSeekApp::createUi(lv_obj_t *parent) {
     lv_obj_set_style_text_font(uTitle, t::fontSmall(), 0);
     lv_obj_set_style_text_color(uTitle, lv_color_hex(0xFFFFFF), 0);
 
-    auto uDesc = c::label(m_viewUnconfigured, "手机连接热点后用浏览器访问:", 196);
+    auto uDesc = c::label(m_viewUnconfigured, "手机连热点, 浏览器访问:", 196);
     lv_obj_set_pos(uDesc, 0, 68);
     lv_obj_set_style_text_align(uDesc, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(uDesc, t::fontSmall(), 0);
@@ -296,7 +304,7 @@ void DeepSeekApp::createUi(lv_obj_t *parent) {
     lv_obj_set_style_text_font(m_lblIpGuide, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(m_lblIpGuide, lv_color_hex(0x38BDF8), 0);
 
-    auto uSub = c::label(m_viewUnconfigured, "或在SD卡创建 deepseek.json", 196);
+    auto uSub = c::label(m_viewUnconfigured, "或SD卡放 deepseek.json", 196);
     lv_obj_set_pos(uSub, 0, 126);
     lv_obj_set_style_text_align(uSub, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(uSub, t::fontSmall(), 0);
@@ -310,7 +318,7 @@ void DeepSeekApp::createUi(lv_obj_t *parent) {
     lv_obj_set_style_bg_opa(footerBox, LV_OPA_TRANSP, 0);
     lv_obj_clear_flag(footerBox, LV_OBJ_FLAG_CLICKABLE);
 
-    m_lblFooterLeft = c::label(footerBox, "[1/2] 滑动切换", 110);
+    m_lblFooterLeft = c::label(footerBox, "[1/2] 切换", 110);
     lv_obj_set_pos(m_lblFooterLeft, 0, 2);
     lv_obj_set_style_text_font(m_lblFooterLeft, t::fontSmall(), 0);
     lv_obj_set_style_text_color(m_lblFooterLeft, lv_color_hex(0x64748B), 0);
@@ -330,11 +338,11 @@ void DeepSeekApp::switchView(int viewIdx) {
     if (m_currentView == 0) {
         lv_label_set_text(m_headerSub, "· 用量");
         lv_obj_set_style_text_color(m_headerSub, lv_color_hex(0x60A5FA), 0);
-        c::setText(m_lblFooterLeft, "[1/2] 滑动切余额");
+        c::setText(m_lblFooterLeft, "[1/2] 切余额");
     } else {
         lv_label_set_text(m_headerSub, "· 余额");
         lv_obj_set_style_text_color(m_headerSub, lv_color_hex(0x38BDF8), 0);
-        c::setText(m_lblFooterLeft, "[2/2] 滑动切用量");
+        c::setText(m_lblFooterLeft, "[2/2] 切用量");
     }
 }
 
@@ -354,6 +362,15 @@ void DeepSeekApp::triggerRefresh() {
     client.fetchAsync([this](bool success) {
         // UI updates handled on next timer tick
     });
+}
+
+void DeepSeekApp::setHeroValue(const char *value, const char *unit) {
+    if (m_lblTodayToken) c::setText(m_lblTodayToken, value);
+    if (!m_lblTokenUnit) return;
+    c::setText(m_lblTokenUnit, unit);
+    // Re-align every time: the value label is auto-sized, so its width changes
+    // with "0" -> "12.4" -> "1.20 M".
+    lv_obj_align_to(m_lblTokenUnit, m_lblTodayToken, LV_ALIGN_OUT_RIGHT_BOTTOM, 4, 0);
 }
 
 void DeepSeekApp::updateUi() {
@@ -406,69 +423,84 @@ void DeepSeekApp::updateUi() {
 
     // 1. Token View update
     if (data.hasTokenStats) {
-        char tokBuf[32];
+        char numBuf[24];
+        const char *unit = "Token";
         if (data.todayTokens >= 1000000) {
-            std::snprintf(tokBuf, sizeof(tokBuf), "%.2f M", data.todayTokens / 1000000.0);
+            std::snprintf(numBuf, sizeof(numBuf), "%.2f", data.todayTokens / 1000000.0);
+            unit = "M Token";
         } else if (data.todayTokens >= 1000) {
-            std::snprintf(tokBuf, sizeof(tokBuf), "%.1f k", data.todayTokens / 1000.0);
+            std::snprintf(numBuf, sizeof(numBuf), "%.1f", data.todayTokens / 1000.0);
+            unit = "k Token";
         } else {
-            std::snprintf(tokBuf, sizeof(tokBuf), "%lld Token", (long long)data.todayTokens);
+            std::snprintf(numBuf, sizeof(numBuf), "%lld", (long long)data.todayTokens);
         }
-        c::setText(m_lblTodayToken, tokBuf);
+        setHeroValue(numBuf, unit);
 
         char costBuf[32];
-        std::snprintf(costBuf, sizeof(costBuf), "约 ¥ %.2f", data.todayCost);
+        if (data.costKnown) {
+            std::snprintf(costBuf, sizeof(costBuf), "约 ¥ %.2f", data.todayCost);
+        } else {
+            std::snprintf(costBuf, sizeof(costBuf), "费用 --");
+        }
         c::setText(m_lblTodayCost, costBuf);
 
-        char pBuf[32];
+        char pBuf[24];
         if (data.promptTokens >= 1000000) std::snprintf(pBuf, sizeof(pBuf), "%.2f M", data.promptTokens / 1000000.0);
-        else std::snprintf(pBuf, sizeof(pBuf), "%.1f k", data.promptTokens / 1000.0);
+        else if (data.promptTokens >= 1000) std::snprintf(pBuf, sizeof(pBuf), "%.1f k", data.promptTokens / 1000.0);
+        else std::snprintf(pBuf, sizeof(pBuf), "%lld", (long long)data.promptTokens);
         c::setText(m_lblPromptTok, pBuf);
 
-        char cBuf[32];
+        char cBuf[24];
         if (data.completionTokens >= 1000000) std::snprintf(cBuf, sizeof(cBuf), "%.2f M", data.completionTokens / 1000000.0);
-        else std::snprintf(cBuf, sizeof(cBuf), "%.1f k", data.completionTokens / 1000.0);
+        else if (data.completionTokens >= 1000) std::snprintf(cBuf, sizeof(cBuf), "%.1f k", data.completionTokens / 1000.0);
+        else std::snprintf(cBuf, sizeof(cBuf), "%lld", (long long)data.completionTokens);
         c::setText(m_lblComplTok, cBuf);
 
         char hitBuf[32];
         std::snprintf(hitBuf, sizeof(hitBuf), "%.1f%% Hit", data.cacheHitRate);
         c::setText(m_lblCacheHit, hitBuf);
 
-        char mBuf[32];
+        char mBuf[40];
         if (data.monthTokens >= 1000000) std::snprintf(mBuf, sizeof(mBuf), "本月累计: %.2f M", data.monthTokens / 1000000.0);
-        else std::snprintf(mBuf, sizeof(mBuf), "本月累计: %.1f k", data.monthTokens / 1000.0);
+        else if (data.monthTokens >= 1000) std::snprintf(mBuf, sizeof(mBuf), "本月累计: %.1f k", data.monthTokens / 1000.0);
+        else std::snprintf(mBuf, sizeof(mBuf), "本月累计: %lld", (long long)data.monthTokens);
         c::setText(m_lblMonthTok, mBuf);
     } else {
         // Fallback or guidance when only API Key is configured
         if (client.getUserToken().empty()) {
-            c::setText(m_lblTodayToken, "--");
+            setHeroValue("--", "");
             c::setText(m_lblTodayCost, "需平台Token");
             c::setText(m_lblPromptTok, "--");
             c::setText(m_lblComplTok, "--");
             c::setText(m_lblCacheHit, "--");
-            c::setText(m_lblMonthTok, "访问/ds填入平台Token查看用量");
+            c::setText(m_lblMonthTok, "访问 /ds 填入平台 Token");
         } else {
-            // userToken was entered, but current day/month usage returned 0 or syncing
-            c::setText(m_lblTodayToken, "0 Token");
-            c::setText(m_lblTodayCost, "约 ¥ 0.00");
-            c::setText(m_lblPromptTok, "0 k");
-            c::setText(m_lblComplTok, "0 k");
-            c::setText(m_lblCacheHit, "0.0% Hit");
-            c::setText(m_lblMonthTok, "本月暂无消耗记录");
+            // userToken was entered but the platform usage API returned nothing
+            // usable. Never render zeros here: "0 Token" reads as "you spent 0"
+            // when in fact the data never arrived.
+            setHeroValue("--", "");
+            c::setText(m_lblTodayCost, "用量不可用");
+            c::setText(m_lblPromptTok, "--");
+            c::setText(m_lblComplTok, "--");
+            c::setText(m_lblCacheHit, "--");
+            char whyBuf[96];
+            std::snprintf(whyBuf, sizeof(whyBuf), "用量: %s",
+                          data.platformError.empty() ? "平台未返回数据" : data.platformError.c_str());
+            c::setText(m_lblMonthTok, whyBuf);
         }
     }
 
     // 2. Balance View update
     char balBuf[32];
-    std::snprintf(balBuf, sizeof(balBuf), "¥ %.2f", data.totalBalance);
+    std::snprintf(balBuf, sizeof(balBuf), "CNY %.2f", data.totalBalance);
     c::setText(m_lblTotalBal, balBuf);
 
     char grtBuf[32];
-    std::snprintf(grtBuf, sizeof(grtBuf), "¥ %.2f", data.grantedBalance);
+    std::snprintf(grtBuf, sizeof(grtBuf), "CNY %.2f", data.grantedBalance);
     c::setText(m_lblGrantedBal, grtBuf);
 
     char topBuf[32];
-    std::snprintf(topBuf, sizeof(topBuf), "¥ %.2f", data.toppedUpBalance);
+    std::snprintf(topBuf, sizeof(topBuf), "CNY %.2f", data.toppedUpBalance);
     c::setText(m_lblToppedBal, topBuf);
 
     c::setText(m_lblModeTag, data.usingPlatformToken ? "平台授权" : "官方APIKey");
