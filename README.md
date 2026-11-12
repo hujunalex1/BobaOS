@@ -1,9 +1,5 @@
 # 🧋 BobaOS 波波 OS
 
-<p align="center">
-  <img src="docs/preview.png" alt="BobaOS character previews" width="720">
-</p>
-
 **BobaOS** 是一个专为 **Waveshare ESP32-S3-Touch-LCD-1.54** 打造的儿童智能手表系统。项目基于开源的 [Yumo OS](./yumo-esp32-os) 二次开发，保留了稳定的硬件驱动与应用框架，并围绕儿童交互重新设计了桌面、动画、AI 助手和功耗策略。
 
 ## ✨ 核心亮点
