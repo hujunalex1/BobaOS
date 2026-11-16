@@ -1,0 +1,3 @@
+# Vendored Stageshow tool: keep the composition sources, not the install.
+stageshow/node_modules/
+stageshow/.npm-cache/

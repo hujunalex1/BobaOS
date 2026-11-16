@@ -1,4 +1,5 @@
 #include "deepseek_app.hpp"
+#include "core/config_server.hpp"
 #include "core/deepseek_client.hpp"
 #include "core/connectivity.hpp"
 #include "ui/compact_ui.hpp"
@@ -25,6 +26,7 @@ void DeepSeekApp::onCreate(lv_obj_t *parent) {
 
     createUi(m_root);
 
+    core::config::acquire();
     core::DeepSeekClient::instance().init();
 
     lv_obj_add_event_cb(m_root, touchCb, LV_EVENT_ALL, this);
@@ -389,7 +391,8 @@ void DeepSeekApp::updateUi() {
         std::string ip = sys::Connectivity::snapshot().ip;
         if (!ip.empty()) {
             char ipBuf[64];
-            std::snprintf(ipBuf, sizeof(ipBuf), "http://%s/ds", ip.c_str());
+            const std::string url = core::config::url();
+            std::snprintf(ipBuf, sizeof(ipBuf), "%s", url.empty() ? "先连接 Wi-Fi" : url.c_str());
             c::setText(m_lblIpGuide, ipBuf);
         }
         return;
@@ -566,6 +569,7 @@ void DeepSeekApp::onHide() {
 }
 
 void DeepSeekApp::onDestroy() {
+    core::config::release();
     if (m_timer) {
         lv_timer_delete(m_timer);
         m_timer = nullptr;

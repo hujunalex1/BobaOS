@@ -3,7 +3,7 @@ from pathlib import Path
 import argparse,struct,zlib
 
 ROOT=(Path(__file__).resolve().parents[2]/'firmware')
-NAMES=('Fc','Programming','Dino','Maze','Patterns','Garden','Timer','Music','Xiaozhi')
+NAMES=('Fc','Programming','Dino','Maze','Patterns','Garden','Timer','Music','Xiaozhi','Weather')
 
 def artwork():
     images=[]
@@ -79,6 +79,17 @@ def artwork():
     rect(p,11,1,2,4);rect(p,9,0,6,2);rect(p,0,9,3,6);rect(p,21,9,3,6)
     rect(p,7,9,3,4);rect(p,14,9,3,4);rect(p,9,15,6,1)
     rect(p,5,20,2,3);line(p,(6,22),(10,18),1)
+    images.append(p)
+    # Sun peeking behind a crisp cloud silhouette.
+    p=canvas()
+    disk(p,16,7,3)
+    rect(p,16,1,1,2);rect(p,21,7,2,1);rect(p,12,2,1,2);rect(p,20,3,2,1);rect(p,20,10,2,1)
+    # Clear halo where cloud sits in front of sun
+    disk(p,11,13,6,0);disk(p,6,16,5,0);disk(p,16,17,5,0);rect(p,5,15,12,7,0)
+    # Cloud outer silhouette
+    disk(p,11,13,5);disk(p,6,16,4);disk(p,16,17,4);rect(p,6,15,10,6)
+    # Carve hollow interior so outline weight matches other icons
+    disk(p,11,13,3,0);disk(p,6,16,2,0);disk(p,16,17,2,0);rect(p,6,16,10,3,0)
     images.append(p)
     return images
 

@@ -1,7 +1,6 @@
 #include "deepseek_client.hpp"
 
 #include "esp_http_client.h"
-#include "esp_http_server.h"
 #include "esp_crt_bundle.h"
 #include "nvs_flash.h"
 #include "cJSON.h"
@@ -23,7 +22,6 @@ namespace core {
 
 static const char *TAG = "DeepSeekClient";
 static const char *kNvsNamespace = "ds_monitor";
-static httpd_handle_t s_dsServer = nullptr;
 
 static std::string urlDecode(const std::string &in) {
     std::string out;
@@ -181,164 +179,6 @@ static void syncTimeFromHttpDate(const char *dateStr) {
     }
 }
 
-static esp_err_t dsGetHandler(httpd_req_t *req) {
-    auto &client = DeepSeekClient::instance();
-
-    auto curData = client.getData();
-    std::string curU = client.getUserToken();
-    std::string curA = client.getApiKey();
-
-    char statusInfo[512];
-    if (curData.valid) {
-        std::snprintf(statusInfo, sizeof(statusInfo),
-            "<div style='background:#064e3b;color:#6ee7b7;padding:12px;border-radius:8px;margin-bottom:14px;font-size:13px;line-height:1.6'>"
-            "<b>✓ 已同步成功</b><br>"
-            "可用余额: ¥ %.2f (本金 ¥%.2f / 赠送 ¥%.2f)<br>"
-            "今日用量: %lld Token | 费用: ¥ %.2f<br>"
-            "<small style='color:#a7f3d0'>状态: 官方API(HTTP %d) / 平台(HTTP %d) %s</small>"
-            "</div>",
-            curData.totalBalance, curData.toppedUpBalance, curData.grantedBalance,
-            (long long)curData.todayTokens, curData.todayCost,
-            curData.lastApiStatus, curData.lastPlatformStatus,
-            curData.hasTokenStats ? "[含用量数据]" : "[仅余额，无用量]");
-    } else if (!curU.empty() || !curA.empty()) {
-        std::snprintf(statusInfo, sizeof(statusInfo),
-            "<div style='background:#7f1d1d;color:#fca5a5;padding:12px;border-radius:8px;margin-bottom:14px;font-size:13px;line-height:1.6'>"
-            "<b>⚠ 同步中或遇到异常</b><br>API: HTTP %d | 平台: HTTP %d<br>%s</div>",
-            curData.lastApiStatus, curData.lastPlatformStatus,
-            curData.errorMsg.empty() ? "正在拉取中，请稍后刷新页面..." : curData.errorMsg.c_str());
-    } else {
-        std::snprintf(statusInfo, sizeof(statusInfo),
-            "<div style='background:#1e293b;color:#94a3b8;padding:12px;border-radius:8px;margin-bottom:14px;font-size:13px'>"
-            "尚未配置凭据，请在下方填入。</div>");
-    }
-
-    const std::string escU = htmlEscape(curU);
-    const std::string escA = htmlEscape(curA);
-
-    std::string html;
-    html.reserve(3584);
-    html += "<!DOCTYPE html><html><head><meta charset='utf-8'>"
-            "<meta name='viewport' content='width=device-width, initial-scale=1'>"
-            "<title>DeepSeek 凭据配置 - CubePaw</title>"
-            "<style>body{background:#0b0f19;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:20px 14px;margin:0}"
-            ".card{background:#131c2e;border:1px solid #1e293b;border-radius:16px;padding:20px;max-width:440px;margin:0 auto;box-shadow:0 10px 30px rgba(0,0,0,0.6)}"
-            "h2{color:#38bdf8;margin:0 0 12px;font-size:20px;display:flex;align-items:center;gap:8px}"
-            "label{font-size:13px;font-weight:600;color:#cbd5e1;display:block;margin-top:14px}"
-            "input,textarea{width:100%;box-sizing:border-box;padding:12px;margin:6px 0 12px;background:#0f172a;border:1px solid #334155;border-radius:10px;color:#fff;font-size:13px;font-family:monospace}"
-            "button{width:100%;padding:14px;background:#2563eb;color:#fff;border:none;border-radius:10px;font-weight:bold;font-size:15px;cursor:pointer;margin-top:12px}"
-            "button:hover{background:#1d4ed8}"
-            ".tip{background:#1a2336;border:1px solid #233554;border-radius:10px;padding:12px;font-size:12px;color:#94a3b8;margin-top:16px;line-height:1.6}"
-            ".btn-sub{display:inline-block;padding:8px 14px;background:#1e293b;color:#38bdf8;border-radius:8px;text-decoration:none;font-size:12px;margin-top:8px}"
-            "</style></head><body><div class='card'>"
-            "<h2>🐳 DeepSeek 凭据配置</h2>";
-
-    html += statusInfo;
-
-    html += "<form method='POST' action='/ds'>"
-            "<label>1. 平台 userToken (获取实时 Token 统计):</label>"
-            "<textarea name='userToken' rows='4' placeholder='在 platform.deepseek.com 登录后按 F12 -> Local Storage 复制 userToken'>";
-    html += escU;
-    html += "</textarea>"
-            "<label>2. API Key (获取官方余额，sk-...):</label>"
-            "<input name='apiKey' placeholder='sk-...' value='";
-    html += escA;
-    html += "'>"
-            "<button type='submit'>💾 保存并同步到设备</button>"
-            "</form>"
-            "<div style='text-align:center;margin-top:10px'>"
-            "<a href='/ds' class='btn-sub'>🔄 刷新测试状态</a>"
-            "</div>"
-            "<div class='tip'><b>💡 获取指南：</b><br>"
-            "• <b>官方余额</b>：在控制台创建 <code>sk-...</code> 即可立即显示真实金额。<br>"
-            "• <b>Token 统计</b>：在电脑登录 <span style='color:#38bdf8'>platform.deepseek.com</span>，按 F12 打开开发者工具，在 Application (应用程序) -> Local Storage 中找到 <code>userToken</code> 完整值复制到上方。</div>"
-            "</div></body></html>";
-
-    httpd_resp_set_type(req, "text/html; charset=utf-8");
-    return httpd_resp_send(req, html.c_str(), html.size());
-}
-
-static esp_err_t dsPostHandler(httpd_req_t *req) {
-    size_t totalLen = req->content_len;
-    if (totalLen == 0 || totalLen > 8192) {
-        return httpd_resp_send_500(req);
-    }
-
-    std::string postData;
-    postData.resize(totalLen);
-    size_t received = 0;
-    while (received < totalLen) {
-        int ret = httpd_req_recv(req, &postData[received], totalLen - received);
-        if (ret <= 0) break;
-        received += ret;
-    }
-
-    std::string userToken, apiKey;
-
-    cJSON *root = cJSON_Parse(postData.c_str());
-    if (root) {
-        cJSON *u = cJSON_GetObjectItem(root, "userToken");
-        cJSON *a = cJSON_GetObjectItem(root, "apiKey");
-        if (u && u->valuestring) userToken = u->valuestring;
-        if (a && a->valuestring) apiKey = a->valuestring;
-        cJSON_Delete(root);
-    } else {
-        userToken = findFormKey(postData, "userToken");
-        apiKey = findFormKey(postData, "apiKey");
-    }
-
-    cleanTokenString(userToken);
-    cleanTokenString(apiKey);
-
-    ESP_LOGI(TAG, "Received credentials: userToken len=%d, apiKey len=%d", (int)userToken.size(), (int)apiKey.size());
-
-    if (!userToken.empty() || !apiKey.empty()) {
-        DeepSeekClient::instance().setCredentials(userToken, apiKey);
-        DeepSeekClient::instance().fetchAsync(nullptr);
-    }
-
-    const char *resp = "<!DOCTYPE html><html><body style='background:#0b0f19;color:#34d399;font-family:sans-serif;text-align:center;padding:40px'>"
-                       "<h2>✅ 保存成功！</h2><p style='color:#cbd5e1'>凭据已更新并已保存至 NVS，后台已触发数据拉取，请查看 CubePaw 屏幕。</p>"
-                       "<a href='/ds' style='display:inline-block;padding:10px 20px;background:#2563eb;color:#fff;border-radius:8px;text-decoration:none;margin-top:14px'>返回并查看状态</a></body></html>";
-    httpd_resp_set_type(req, "text/html; charset=utf-8");
-    return httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
-}
-
-static void startConfigServer() {
-    if (s_dsServer) return;
-    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 80;
-    config.ctrl_port = 32768;
-    config.max_uri_handlers = 8;
-    config.stack_size = 8192;
-
-    if (httpd_start(&s_dsServer, &config) == ESP_OK) {
-        httpd_uri_t getUri{};
-        getUri.uri = "/";
-        getUri.method = HTTP_GET;
-        getUri.handler = dsGetHandler;
-        httpd_register_uri_handler(s_dsServer, &getUri);
-
-        httpd_uri_t getDs{};
-        getDs.uri = "/ds";
-        getDs.method = HTTP_GET;
-        getDs.handler = dsGetHandler;
-        httpd_register_uri_handler(s_dsServer, &getDs);
-
-        httpd_uri_t postDs{};
-        postDs.uri = "/ds";
-        postDs.method = HTTP_POST;
-        postDs.handler = dsPostHandler;
-        httpd_register_uri_handler(s_dsServer, &postDs);
-
-        httpd_uri_t apiDs{};
-        apiDs.uri = "/api/deepseek";
-        apiDs.method = HTTP_POST;
-        apiDs.handler = dsPostHandler;
-        httpd_register_uri_handler(s_dsServer, &apiDs);
-    }
-}
-
 DeepSeekClient &DeepSeekClient::instance() {
     static DeepSeekClient inst;
     return inst;
@@ -350,7 +190,6 @@ DeepSeekClient::DeepSeekClient() {
 
 void DeepSeekClient::init() {
     loadFromNvs();
-    startConfigServer();
 }
 
 bool DeepSeekClient::hasCredentials() const {

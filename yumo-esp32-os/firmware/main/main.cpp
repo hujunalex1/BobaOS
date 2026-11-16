@@ -69,6 +69,10 @@
 #include "apps/xiaozhi.hpp"
 #include "apps/tetris.hpp"
 #include "apps/deepseek_app.hpp"
+#include "apps/weather.hpp"
+#include "core/config_server.hpp"
+#include "core/deepseek_client.hpp"
+#include "core/weather_client.hpp"
 #include <memory>
 
 #define TAG "main"
@@ -165,6 +169,8 @@ static void register_apps(void)
         [] { return std::make_unique<apps::Xiaozhi>(); },"xiaozhi");
     WindowManager::instance().registerApp("DS用量", LV_SYMBOL_CHARGE,
         [] { return std::make_unique<apps::DeepSeekApp>(); },"deepseek");
+    WindowManager::instance().registerApp("天气", ui::icons::Weather,
+        [] { return std::make_unique<apps::WeatherApp>(); },"weather");
     WindowManager::instance().registerApp("儿歌音乐", ui::icons::Music,
         [] { return std::make_unique<apps::Mp3Music>(); },"mp3");
     WindowManager::instance().registerApp(
@@ -217,10 +223,65 @@ extern "C" void app_main(void)
     setenv("TZ", "CST-8", 1);
     tzset();
 
+    // Credentials live behind one phone-facing page so a key never has to be
+    // typed on a 240px keyboard. Apps only declare fields; the server owns HTTP.
+    core::config::registerProvider({
+        "deepseek", "DeepSeek 凭据", "userToken 用于用量统计，API Key 用于余额",
+        [] {
+            auto &client = core::DeepSeekClient::instance();
+            return std::vector<core::config::Field>{
+                {"userToken", "平台 userToken", "platform.deepseek.com 的 LocalStorage 里复制",
+                 client.getUserToken(), true, 511},
+                {"apiKey", "API Key", "sk-...", client.getApiKey(), true, 127},
+            };
+        },
+        [](const core::config::Values &values) {
+            auto &client = core::DeepSeekClient::instance();
+            std::string token = core::config::valueOf(values, "userToken");
+            std::string key = core::config::valueOf(values, "apiKey");
+            if (token.empty()) token = client.getUserToken();
+            if (key.empty()) key = client.getApiKey();
+            client.setCredentials(token, key);
+            if (client.hasCredentials()) client.fetchAsync();
+            return client.hasCredentials();
+        },
+    });
+
+    core::WeatherClient::instance().init();
+    core::config::registerProvider({
+        "weather", "和风天气", "填写控制台 API Host 与经纬度，例如杭州 30.27 / 120.16",
+        [] {
+            auto &client = core::WeatherClient::instance();
+            return std::vector<core::config::Field>{
+                {"host", "API Host", "控制台-设置里复制，形如 abc.qweatherapi.com", client.host(), false, 63},
+                {"key", "API Key", "项目里创建的凭据", client.apiKey(), true, 63},
+                {"lat", "纬度", "30.27", client.latitude(), false, 9},
+                {"lon", "经度", "120.16", client.longitude(), false, 9},
+                {"city", "显示的城市名", "杭州", client.city(), false, 15},
+            };
+        },
+        [](const core::config::Values &values) {
+            auto &client = core::WeatherClient::instance();
+            std::string key = core::config::valueOf(values, "key");
+            if (key.empty()) key = client.apiKey();
+            client.setConfig(core::config::valueOf(values, "host"), key,
+                             core::config::valueOf(values, "lat"),
+                             core::config::valueOf(values, "lon"),
+                             core::config::valueOf(values, "city"));
+            client.init();
+            if (client.configured()) client.fetchAsync();
+            return client.configured();
+        },
+    });
+
     // Shared infrastructure only. The service starts both radios after UI unlock;
     // saved-target connection is a bounded, boot-only operation.
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
+
+    // The config server creates a listening socket, so it has to come after
+    // lwIP is initialised. Booting it earlier crashed before the UI appeared.
+    core::config::acquire();
     lv_display_t *disp = bsp_display_start();
     ESP_ERROR_CHECK(disp ? ESP_OK : ESP_ERR_NO_MEM);
     lv_indev_t *indev = bsp_display_get_input_dev();

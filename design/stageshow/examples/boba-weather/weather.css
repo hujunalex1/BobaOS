@@ -1,0 +1,190 @@
+/* BobaOS weather app — device shot on a warm ground. */
+.bw-stage {
+  & .ss-stage {
+    overflow: hidden;
+    background: radial-gradient(120% 90% at 50% 34%, #fffdfb 0%, #f7ebe4 52%, #f0dfd7 100%);
+  }
+}
+
+.bw {
+  position: absolute;
+  inset: 0;
+  font-family: 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', system-ui, sans-serif;
+  color: #382e25;
+}
+
+/* White squircle body, cropped by the stage at the bottom. */
+.bw-watch {
+  position: absolute;
+  left: 120px;
+  top: 66px;
+  width: 660px;
+  height: 660px;
+  border-radius: 158px;
+  background: linear-gradient(180deg, #ffffff 0%, #fdfaf7 100%);
+  border: 1px solid #ece0d6;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 36px 70px -28px rgba(96, 62, 48, 0.38),
+    0 10px 24px -14px rgba(96, 62, 48, 0.22);
+}
+
+.bw-bezel {
+  position: absolute;
+  inset: 86px;
+  border-radius: 80px;
+  background: #0d0b10;
+}
+
+.bw-screen {
+  position: absolute;
+  inset: 90px;
+  border-radius: 76px;
+  overflow: hidden;
+  background: #fff8f2;
+}
+
+/* Real 240px UI, doubled. */
+.bw-ui {
+  width: 240px;
+  height: 240px;
+  transform: scale(2);
+  transform-origin: 0 0;
+  position: relative;
+}
+
+.bw-head {
+  position: absolute;
+  top: 13px;
+  left: 15px;
+  right: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bw-city {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: #382e25;
+}
+
+.bw-sync {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid #eee0d4;
+  color: #8b7a6a;
+  background: #ffffff;
+}
+
+.bw-hero {
+  position: absolute;
+  top: 40px;
+  left: 0;
+  right: 0;
+  height: 76px;
+}
+
+.bw-temp {
+  position: absolute;
+  left: 15px;
+  top: -2px;
+  font-size: 62px;
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: -2px;
+  color: #382e25;
+}
+
+.bw-deg {
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: #ff6b8b;
+  vertical-align: top;
+  margin-left: 1px;
+  position: relative;
+  top: 7px;
+}
+
+/* Partly cloudy: a mango sun behind a white cloud, both from Lucide. */
+.bw-icon {
+  position: absolute;
+  right: 14px;
+  top: 4px;
+  width: 46px;
+  height: 42px;
+}
+
+.bw-sun {
+  position: absolute;
+  right: 1px;
+  top: 0;
+  color: #ffab45;
+}
+
+.bw-cloud {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  color: #cbb9ab;
+  fill: #fff8f2;
+}
+
+.bw-cond {
+  position: absolute;
+  top: 113px;
+  left: 16px;
+  font-size: 13px;
+  line-height: 1;
+  color: #8b7a6a;
+}
+
+.bw-stats {
+  position: absolute;
+  top: 137px;
+  left: 14px;
+  width: 212px;
+  height: 56px;
+  box-sizing: border-box;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid #f1e2d7;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+}
+
+.bw-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bw-k {
+  font-size: 10px;
+  line-height: 1;
+  color: #96867a;
+}
+
+.bw-v {
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 600;
+  color: #382e25;
+}
+
+.bw-next {
+  position: absolute;
+  top: 207px;
+  left: 16px;
+  font-size: 12px;
+  line-height: 1;
+  color: #8b7a6a;
+}
