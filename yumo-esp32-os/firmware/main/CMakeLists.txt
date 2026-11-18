@@ -133,6 +133,7 @@ set(MAIN_SRCS
     "apps/file_manager.cpp"
     "apps/password_vault.cpp"
     "apps/recorder.cpp"
+    "apps/voice_lab.cpp"
     "apps/fc_player.cpp"
     "apps/fc_player_saves.cpp"
 )

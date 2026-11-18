@@ -66,6 +66,7 @@
 #include "apps/lan.hpp"
 #include "apps/speed_test.hpp"
 #include "apps/randomizer.hpp"
+#include "apps/voice_lab.hpp"
 #include "apps/xiaozhi.hpp"
 #include "apps/tetris.hpp"
 #include "apps/deepseek_app.hpp"
@@ -178,6 +179,8 @@ static void register_apps(void)
         [] { return std::make_unique<apps::PhotoViewer>(); },"photos");
     WindowManager::instance().registerApp("录音机", LV_SYMBOL_AUDIO,
         [] { return std::make_unique<apps::Recorder>(); },"recorder");
+    WindowManager::instance().registerApp("声音泡泡", LV_SYMBOL_AUDIO,
+        [] { return std::make_unique<apps::VoiceLab>(); },"voice");
     WindowManager::instance().registerApp(
         "时钟", LV_SYMBOL_BELL,
         [] { return std::make_unique<apps::Watchface>(); },"clock");

@@ -2,14 +2,18 @@
 #include "sd_media.hpp"
 #include "worker_wake.hpp"
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <string>
 namespace core::recorder {
 enum class State { Opening, Recording, Playing, Paused, Saving, Finished };
+// Playback-only voice effects. Recording always stores the clean 16 kHz WAV.
+enum class Effect : uint8_t { None, Chipmunk, Monster, Robot, Echo, Slow };
 struct Job {
   const bool recording;
   sd::Access sdAccess;
   explicit Job(bool record) : recording(record) {}
+  std::atomic<Effect> effect{Effect::None};
   std::atomic<bool> stop{false}, pause{false}, done{false};
   WorkerWake wake;
   void requestStop() { stop.store(true);wake.notify(); }
@@ -23,6 +27,7 @@ struct Job {
   std::string path, error; // read on GUI only AFTER done(acquire)
   bool ok = false;
 };
-std::shared_ptr<Job> start(bool record, const std::string &path = {});
+std::shared_ptr<Job> start(bool record, const std::string &path = {},
+                           Effect effect = Effect::None);
 bool idle();
 } // namespace core::recorder

@@ -43,10 +43,10 @@ struct File {
 };
 struct Stream {
   bool opened = false;
-  bool open(bool record) {
+  bool open(bool record, uint32_t rate = wav::Rate) {
     if (opened)
       return true;
-    return opened = sys::Audio::openStream(record, wav::Rate);
+    return opened = sys::Audio::openStream(record, rate);
   }
   void close() {
     if (opened)
@@ -166,6 +166,67 @@ void play(Job &job,File &file,Stream &stream,uint32_t limit) {
   stream.close();job.peak.store(0);job.scrub.store(0);
   job.ok=job.error.empty();
 }
+// Playback-only effects. Chipmunk/Slow change the output sample rate so the
+// same PCM plays one octave up/down; Robot and Monster add ring modulation,
+// and Echo mixes a short feedback delay. The source WAV is never modified.
+void playEffect(Job &job,File &file,Stream &stream,uint32_t limit) {
+  const Effect effect=job.effect.load();
+  const uint32_t rate=effect==Effect::Chipmunk?32000u:
+    (effect==Effect::Monster||effect==Effect::Slow)?8000u:16000u;
+  if(!stream.open(false,rate)) {job.error="音频设备忙或启动失败";return;}
+  job.state.store(State::Playing);job.length.store(limit);
+  constexpr unsigned Frames=256;
+  int16_t samples[Frames];
+  std::unique_ptr<int16_t[]> echo;
+  unsigned echoSize=0,echoPos=0;
+  if(effect==Effect::Echo) {
+    echoSize=rate*120/1000; // 120 ms tail
+    echo.reset(new(std::nothrow) int16_t[echoSize]());
+    if(!echo) {stream.close();job.error="变声内存不足";return;}
+  }
+  uint32_t ringPhase=0,position=0;
+  const uint32_t ringStep=uint32_t((uint64_t(effect==Effect::Monster?55u:90u)<<32)/rate);
+  while(position<limit && !job.stop.load() && !sys::Power::sleepPending()) {
+    if(!sys::Power::audioMayRun()) break;
+    sys::Power::WorkGuard work;
+    const uint32_t bytes=std::min<uint32_t>(Frames*2,limit-position);
+    if(position>uint32_t(LONG_MAX-44) ||
+       std::fseek(file.p,44L+static_cast<long>(position),SEEK_SET)!=0 ||
+       std::fread(samples,1,bytes,file.p)!=bytes) {
+      file.card.reportError(EIO);job.error="录音读取失败";break;
+    }
+    const unsigned frames=bytes/2;
+    for(unsigned i=0;i<frames;++i) {
+      int value=samples[i];
+      if(effect==Effect::Robot) {
+        ringPhase+=ringStep;
+        value=(value*((ringPhase&0x80000000u)?1:-1))/256*256;
+        value=value*3/4;
+      } else if(effect==Effect::Monster) {
+        ringPhase+=ringStep;
+        value=value*((ringPhase&0x80000000u)?1:-1)*3/4;
+      } else if(effect==Effect::Echo) {
+        const int wet=echo[echoPos];
+        const int mixed=(value*3+wet*2)/5;
+        const int feedback=value/2+wet/3;
+        echo[echoPos]=int16_t(std::max(-32768,std::min(32767,feedback)));
+        echoPos=(echoPos+1)%echoSize;
+        value=mixed;
+      }
+      samples[i]=int16_t(std::max(-32768,std::min(32767,value)));
+    }
+    if(!sys::Audio::writeStream(samples,frames*sizeof(int16_t))) {
+      job.error="变声播放失败";break;
+    }
+    unsigned peak=0;
+    for(unsigned i=0;i<frames;++i)
+      peak=std::max(peak,unsigned(samples[i]<0?-int(samples[i]):int(samples[i])));
+    position+=bytes;
+    job.bytes.store(position);job.peak.store(peak);
+  }
+  stream.close();job.peak.store(0);
+  job.ok=job.error.empty();
+}
 void execute(Job &job) {
   // onHide cancels queued starts; only an already-open recording needs saving.
   if(job.stop.load() || sys::Power::sleepPending()) return;
@@ -203,7 +264,8 @@ void execute(Job &job) {
       job.error = "录音损坏或不是16kHz单声道PCM WAV";
       return;
     }
-    play(job,file,stream,limit);
+    if(job.effect.load()!=Effect::None) playEffect(job,file,stream,limit);
+    else play(job,file,stream,limit);
     return;
   }
   static_assert(DualMicInput::MaxFrames == RecordingLevel::MaxSamples);
@@ -344,13 +406,14 @@ void worker(void *arg) {
   vTaskDeleteWithCaps(nullptr);
 }
 } // namespace
-std::shared_ptr<Job> start(bool record, const std::string &path) {
+std::shared_ptr<Job> start(bool record, const std::string &path, Effect effect) {
   if (sys::Power::sleepPending() || !core::mp3::idle() || !core::chip::idle() || !core::game_audio::idle() || !core::fc::idle() || !core::xiaozhi::idle() || active.exchange(true))
     return {};
   std::shared_ptr<Job> job;
   std::shared_ptr<Job> *holder = nullptr;
   try {
     job = std::make_shared<Job>(record);
+    job->effect.store(effect);
     job->sdAccess=sd::requestAccess(!record);
     job->path = path;
     holder = new std::shared_ptr<Job>(job);

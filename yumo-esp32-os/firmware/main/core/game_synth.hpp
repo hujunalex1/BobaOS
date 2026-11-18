@@ -2,7 +2,8 @@
 #include <cstdint>
 namespace core::game_audio {
 enum class Track {Runner,Maze,Morse};
-enum Effect : unsigned {Jump=1,Bonus=2,Lost=4,Impact=8,Fall=16,Goal=32,Silence=64};
+enum Effect : unsigned {Jump=1,Bonus=2,Lost=4,Impact=8,Fall=16,Goal=32,Silence=64,
+    Applause=128,Laugh=256,Meow=512,Magic=1024,Boing=2048,Honk=4096,Twinkle=8192,Drum=16384};
 // Original miniature chiptune, generated at playback time. No sampled assets.
 struct Synth {
     static constexpr unsigned Rate=16000;
@@ -13,10 +14,14 @@ struct Synth {
     int noiseFilter=0,rollGain=0;
     unsigned effect=0;
     static constexpr unsigned effectLength(unsigned e) {
-        return e==Goal?12800:e==Fall?7200:e==Lost?6400:e==Bonus?3840:e==Impact?1280:1920;
+        return e&Goal?12800:e&Fall?7200:e&Lost?6400:e&Applause?22400:e&Laugh?19200:
+               e&Meow?12800:e&Magic?16000:e&Boing?9600:e&Honk?8000:e&Twinkle?16000:
+               e&Drum?6400:e&Bonus?3840:e&Impact?1280:1920;
     }
     static constexpr unsigned priority(unsigned e) {
-        return e&Goal?Goal:e&Fall?Fall:e&Lost?Lost:e&Bonus?Bonus:e&Impact?Impact:e&Jump?unsigned(Jump):0U;
+        return e&Goal?Goal:e&Fall?Fall:e&Lost?Lost:e&Applause?Applause:e&Laugh?Laugh:
+               e&Meow?Meow:e&Magic?Magic:e&Boing?Boing:e&Honk?Honk:e&Twinkle?Twinkle:
+               e&Drum?Drum:e&Bonus?Bonus:e&Impact?Impact:e&Jump?unsigned(Jump):0U;
     }
     static constexpr unsigned movement(unsigned material,unsigned speed) {
         return ((material<5?material:0)<<8)|(speed>100?100:speed);
@@ -28,7 +33,58 @@ struct Synth {
         const int p=int(phase>>20);
         return p<2048?p*2-2048:6143-p*2;
     }
-    constexpr int16_t sample(bool music,unsigned motion=0) {
+    // Cartoon soundboard voices. Kept separate from the game cues above so the
+    // runner/maze cues remain byte-identical.
+    int voiceEffect(unsigned e,unsigned length,unsigned left) {
+        const unsigned t=effectSample;
+        noise=noise*1664525u+1013904223u;
+        const int n=int(noise>>20)-2048;
+        const unsigned attack=t<160?t:160;
+        const unsigned env=unsigned(uint64_t(attack)*left*256/(uint64_t(160)*length));
+        if(e&Applause) {
+            const unsigned crackle=((noise>>8)&0x7F)+32;
+            return int(int64_t(n)*crackle*env/(128*256));
+        }
+        if(e&Laugh) {
+            const unsigned burst=t%3200;
+            const unsigned b=burst<120?burst:(3200-burst);
+            const unsigned hz=280+((t/3200)&1?90:0);
+            return int(int64_t(wave(effectPhase,hz))*b*env/(3200*128));
+        }
+        if(e&Meow) {
+            const unsigned half=length/2;
+            const unsigned hz=t<half?480+t*520/half:1000-(t-half)*520/half;
+            const unsigned vib=((t/240)&1)?30:0;
+            return int(int64_t(wave(effectPhase,hz+vib))*env/128);
+        }
+        if(e&Boing) {
+            const unsigned hz=180+(length-t)*620/length;
+            return int(int64_t(wave(effectPhase,hz))*env/128);
+        }
+        if(e&Honk) {
+            return int(int64_t(wave(effectPhase,247)+wave(effectPhase,741)/3)*env/160);
+        }
+        if(e&(Magic|Twinkle)) {
+            static constexpr unsigned magic[5]={523,659,784,1047,1319};
+            static constexpr unsigned twinkle[6]={523,659,784,1047,784,659};
+            const unsigned count=(e&Magic)?5:6;
+            const unsigned noteLength=length/count;
+            const unsigned index=t/noteLength<count?t/noteLength:count-1;
+            const unsigned pos=t%noteLength;
+            const unsigned noteEnv=pos<80?pos*256/80:(noteLength-pos)*256/noteLength;
+            int out=int(int64_t(wave(effectPhase,(e&Magic)?magic[index]:twinkle[index]))*noteEnv/256);
+            if(e&Magic) out+=int(int64_t(n)*noteEnv/(256*8));
+            return out;
+        }
+        if(e&Drum) {
+            const unsigned hz=90-(t<length?t*40/length:40);
+            int out=int(int64_t(wave(effectPhase,hz))*left*256/(int64_t(length)*128));
+            if(t<1200) out+=int(int64_t(n)*(1200-t)/(1200*8));
+            return out;
+        }
+        return 0;
+    }
+    int16_t sample(bool music,unsigned motion=0) {
         int mixed=0;
         const unsigned material=(motion>>8)<5?motion>>8:0;
         if(music) {
@@ -66,14 +122,18 @@ struct Synth {
         }
         if(effect) {
             const unsigned length=effectLength(effect),left=length-effectSample;
-            unsigned hz=effect==Lost?110+left*420/length:effect==Bonus?(effectSample<1280?880:effectSample<2560?1175:1568):350+effectSample*650/length;
-            if(effect==Impact){constexpr unsigned taps[5]={880,420,230,150,1320};hz=taps[material];}
-            else if(effect==Fall)hz=90+left*650/length;
-            else if(effect==Goal){constexpr unsigned chord[4]={523,659,784,1047};hz=chord[effectSample/3200];}
-            const unsigned attack=effectSample<80?effectSample:80;
-            // Normalize first: longer fanfares must not overflow 32-bit products.
-            const unsigned gain=left*attack*256/(length*80);
-            mixed+=wave(effectPhase,hz)*int(gain)/(effect==Impact?192:128);
+            if(effect&(Applause|Laugh|Meow|Magic|Boing|Honk|Twinkle|Drum)) {
+                mixed+=voiceEffect(effect,length,left);
+            } else {
+                unsigned hz=effect==Lost?110+left*420/length:effect==Bonus?(effectSample<1280?880:effectSample<2560?1175:1568):350+effectSample*650/length;
+                if(effect==Impact){constexpr unsigned taps[5]={880,420,230,150,1320};hz=taps[material];}
+                else if(effect==Fall)hz=90+left*650/length;
+                else if(effect==Goal){constexpr unsigned chord[4]={523,659,784,1047};hz=chord[effectSample/3200];}
+                const unsigned attack=effectSample<80?effectSample:80;
+                // Normalize first: longer fanfares must not overflow 32-bit products.
+                const unsigned gain=left*attack*256/(length*80);
+                mixed+=wave(effectPhase,hz)*int(gain)/(effect==Impact?192:128);
+            }
             if(++effectSample>=length)effect=0;
         }
         return int16_t(mixed<-32768?-32768:mixed>32767?32767:mixed);
